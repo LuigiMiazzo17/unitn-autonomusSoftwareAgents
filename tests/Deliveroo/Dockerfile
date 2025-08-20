@@ -10,7 +10,9 @@ USER node
 # Set the working directory
 WORKDIR /app/backend
 
-COPY --chown=node:node ./Deliveroo.js/backend/package*.json .
+# Copy package.json and package-lock.json
+COPY --chown=node:node ./Deliveroo.js/backend/package*.json ./
+
 # Install dependencies
 RUN npm install
 
