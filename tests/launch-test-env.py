@@ -15,7 +15,7 @@ DOCKERFILE_PATH = Path(__file__).parent / "Deliveroo"
 
 
 def main():
-    with DockerImage(path=DOCKERFILE_PATH, tag="deliveroo-srv") as image:
+    with DockerImage(path=DOCKERFILE_PATH) as image:
         with ServerContainer(port=8080, image=image) as srv:
 
             url = srv._create_connection_url()
