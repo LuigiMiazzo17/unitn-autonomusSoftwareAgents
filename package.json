@@ -1,0 +1,37 @@
+{
+  "name": "autonomous-software-agents",
+  "version": "1.0.0",
+  "description": "Autonomous Software Agents @ UniTn Course Project, A.A 2024/2025",
+  "license": "MIT",
+  "main": "app.js",
+  "type": "module",
+  "team": "svejaMacachi",
+  "authors": [
+    {
+      "name": "Luigi Miazzo",
+      "email": "luigi.miazzo@studenti.unitn.it"
+    },
+    {
+      "name": "Lorenzo Bevilacqua",
+      "email": "lorenzo.bevilacqua@studenti.unitn.it"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LuigiMiazzo17/unitn-autonomusSoftwareAgents.git"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && esbuild app.ts --bundle --tsconfig=tsconfig.json --bundle --outdir=dist --platform=node --format=esm --external:@unitn-asa/deliveroo-js-client --external:@unitn-asa/pddl-client",
+    "start": "npm run build && node dist/app.js"
+  },
+  "dependencies": {
+    "@unitn-asa/deliveroo-js-client": "^2.0.3",
+    "@unitn-asa/pddl-client": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  }
+}
