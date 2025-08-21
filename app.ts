@@ -1,5 +1,5 @@
 import Agent from "src/agent";
 
-const agent = new Agent({});
+const agent = await Agent.build({});
 
-agent.run();
+await agent.run();
