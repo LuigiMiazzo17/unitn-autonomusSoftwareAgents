@@ -22,7 +22,7 @@ declare module "@unitn-asa/deliveroo-js-client" {
   export interface Tile {
     x: number;
     y: number;
-    type: string;
+    type: number;
   }
 
   export interface Timestamp {
