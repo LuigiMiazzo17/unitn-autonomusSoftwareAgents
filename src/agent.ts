@@ -1,10 +1,11 @@
 import {
-  Agent as AgentFromMeType,
+  Agent as DeliverooAgentType,
   DeliverooApi,
   Parcel,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
+import { BelifsSet } from "src/belifs";
 import { debug, info } from "src/utils/log";
 
 const FRAME_ADVANCE_INTERVAL = 10;
@@ -18,19 +19,12 @@ type Position = {
   y: number;
 };
 
-enum TileType {
-  WALL,
-  SPAWNABLE,
-  EMPTY,
-  DELIVERY,
-}
-
 export default class Agent {
-  apiConnection: DeliverooApi;
-  frame: number = 0;
-  id: string;
-  pos: Position;
-  map: TileType[][];
+  private apiConnection: DeliverooApi;
+  private frame: number = 0;
+  private id: string;
+  private pos: Position;
+  private belifs: BelifsSet;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -38,7 +32,7 @@ export default class Agent {
     tiles,
   ) => {
     info(`Map update event: ${width}x${height}`, this.id);
-    this.map = Agent.convertMap({ width, height, tiles });
+    this.belifs.updateMap(width, height, tiles);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,15 +50,17 @@ export default class Agent {
 
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     info(`Parcels sensing event: ${parcels.length} parcels`, this.id);
+    this.belifs.updateParcels(parcels);
   };
 
-  onAgentsSensing: (agents: AgentFromMeType[]) => void = (agents) => {
+  onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
     info(`Agents sensing event: ${agents.length} agents`, this.id);
+    this.belifs.updateAgents(agents);
   };
 
   constructor(
     apiConnection: DeliverooApi,
-    me: AgentFromMeType,
+    me: DeliverooAgentType,
     map: { width: number; height: number; tiles: Tile[] },
   ) {
     this.apiConnection = apiConnection;
@@ -75,12 +71,13 @@ export default class Agent {
       y: me.y,
     };
 
-    this.map = Agent.convertMap(map);
     this.apiConnection.onMap(this.onMap);
     this.apiConnection.onAgentConnected(this.onAgentConnected);
     this.apiConnection.onMsg(this.onMsg);
     this.apiConnection.onParcelsSensing(this.onParcelSensing);
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
+
+    this.belifs = new BelifsSet(map);
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
@@ -117,31 +114,5 @@ export default class Agent {
     }
 
     this.frame++;
-  }
-
-  static convertMap(m: {
-    width: number;
-    height: number;
-    tiles: Tile[];
-  }): TileType[][] {
-    const map = Array.from({ length: m.height }, () =>
-      Array(m.width).fill(TileType.EMPTY),
-    );
-
-    for (const tile of m.tiles) {
-      if (tile.type === 0) {
-        map[tile.y][tile.x] = TileType.EMPTY;
-      } else if (tile.type === 1) {
-        map[tile.y][tile.x] = TileType.SPAWNABLE;
-      } else if (tile.type === 2) {
-        map[tile.y][tile.x] = TileType.DELIVERY;
-      } else if (tile.type === 3) {
-        map[tile.y][tile.x] = TileType.WALL;
-      } else {
-        throw new Error(`Unknown tile type: ${tile.type}`);
-      }
-    }
-
-    return map;
   }
 }
