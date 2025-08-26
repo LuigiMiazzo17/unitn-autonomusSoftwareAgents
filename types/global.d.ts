@@ -165,8 +165,31 @@ declare module "@unitn-asa/deliveroo-js-client" {
     ): void;
   }
 
-  // DeliverooApi extends ioClientSocket
   export class DeliverooApi extends IoClientSocket {
     constructor(host: string, token?: string | null, autoconnect?: boolean);
   }
+}
+
+declare module "@unitn-asa/pddl-client" {
+  export class PddlProblem {
+    constructor(
+      name: string,
+      objects: string,
+      init: string,
+      goal: string,
+    ): string;
+
+    toPddlString(): string;
+  }
+
+  export type PddlPlanStep = {
+    parallel: boolean;
+    action: string;
+    args: string[];
+  };
+
+  export async function onlineSolver(
+    pddlDomain: string,
+    pddlProblem: string,
+  ): Promise<PddlPlanStep[]>;
 }
