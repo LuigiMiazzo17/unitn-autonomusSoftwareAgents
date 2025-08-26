@@ -3,6 +3,7 @@ import {
   Parcel,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
+import Agent from "src/agent";
 
 enum TileType {
   WALL,
@@ -11,13 +12,27 @@ enum TileType {
   DELIVERY,
 }
 
+export type Position = {
+  x: number;
+  y: number;
+};
+
 export class BelifsSet {
+  private pos: Position;
   private map: TileType[][];
   private parcels: Parcel[] = [];
   private agents: DeliverooAgentType[] = [];
 
-  constructor(map: { width: number; height: number; tiles: Tile[] }) {
+  constructor(
+    agent: Agent,
+    map: { width: number; height: number; tiles: Tile[] },
+  ) {
     this.map = BelifsSet.convertMap(map);
+    this.pos = agent.getPos();
+  }
+
+  getPos(): Position {
+    return this.pos;
   }
 
   updateMap(width: number, height: number, tiles: Tile[]): void {
@@ -70,5 +85,71 @@ export class BelifsSet {
     }
 
     return map;
+  }
+
+  definePddlProblem(): string {
+    const objects = ["agent1 - agent"];
+    const init = [];
+
+    for (let y = 0; y < this.map.length; y++) {
+      for (let x = 0; x < this.map[y].length; x++) {
+        const tile = this.map[y][x];
+        if (tile === TileType.WALL) {
+          continue;
+        }
+        objects.push(`tile${x}_${y} - tile`);
+
+        if (tile === TileType.SPAWNABLE) {
+          init.push(`(delivery_tile tile${x}_${y})`);
+        }
+
+        const directions = [
+          [0, 1],
+          [1, 0],
+          [0, -1],
+          [-1, 0],
+        ];
+
+        for (const [dx, dy] of directions) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (
+            nx >= 0 &&
+            nx < this.map[0].length &&
+            ny >= 0 &&
+            ny < this.map.length &&
+            this.map[ny][nx] !== TileType.WALL
+          ) {
+            init.push(`(adjacent tile${x}_${y} tile${nx}_${ny})`);
+          }
+        }
+      }
+    }
+
+    for (const parcel of this.parcels) {
+      if (parcel.carriedBy) {
+        continue;
+      }
+      objects.push(`parcel${parcel.id} - parcel`);
+      init.push(`(parcel_at parcel${parcel.id} tile${parcel.x}_${parcel.y})`);
+      init.push(`(not (delivered parcel${parcel.id}))`);
+    }
+
+    for (const agent of this.agents) {
+      init.push(`(blocked tile${agent.x}_${agent.y})`);
+    }
+
+    // init.push(`(at agent1 tile${this.pos.x}_${this.pos.y})`);
+    init.push(`(at agent1 tile2_3)`);
+
+    const goal = [];
+    for (const parcel of this.parcels) {
+      if (parcel.carriedBy) {
+        continue;
+      }
+      goal.push(`(delivered parcel${parcel.id})`);
+    }
+
+    return `(define (problem deliveroo-problem) (:domain deliveroo) (:objects ${objects.join("\n")}) (:init ${init.join("\n")}) (:goal (and ${goal.join("\n")})))`;
   }
 }

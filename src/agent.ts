@@ -5,7 +5,7 @@ import {
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { BelifsSet } from "src/belifs";
+import { BelifsSet, Position } from "src/belifs";
 import { debug, info } from "src/utils/log";
 
 const FRAME_ADVANCE_INTERVAL = 10;
@@ -14,16 +14,11 @@ export type AgentOptions = {
   token?: string | null;
 };
 
-type Position = {
-  x: number;
-  y: number;
-};
-
 export default class Agent {
   private apiConnection: DeliverooApi;
+  private pos: Position;
   private frame: number = 0;
   private id: string;
-  private pos: Position;
   private belifs: BelifsSet;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
@@ -77,7 +72,7 @@ export default class Agent {
     this.apiConnection.onParcelsSensing(this.onParcelSensing);
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
 
-    this.belifs = new BelifsSet(map);
+    this.belifs = new BelifsSet(this, map);
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
@@ -90,10 +85,17 @@ export default class Agent {
     );
   }
 
+  getPos(): Position {
+    return this.pos;
+  }
+
   async run(): Promise<void> {
     this.apiConnection.connect();
 
-    info(`Agent started at position (${this.pos.x}, ${this.pos.y})`, this.id);
+    info(
+      `Agent started at position (${this.belifs.getPos().x}, ${this.belifs.getPos().y})`,
+      this.id,
+    );
 
     while (true) {
       const start = Date.now();
