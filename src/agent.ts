@@ -1,11 +1,12 @@
 import {
   Agent as DeliverooAgentType,
   DeliverooApi,
-  Parcel,
   Tile,
+  Timestamp,
+  Parcel,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { BelifsSet, Position } from "src/belifs";
+import { BelifsSet } from "src/belifs";
 import { debug, info } from "src/utils/log";
 
 const FRAME_ADVANCE_INTERVAL = 10;
@@ -16,10 +17,10 @@ export type AgentOptions = {
 
 export default class Agent {
   private apiConnection: DeliverooApi;
-  private pos: Position;
   private frame: number = 0;
   private id: string;
   private belifs: BelifsSet;
+  private lastTimestampUpdate: Timestamp | null = null;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -53,6 +54,21 @@ export default class Agent {
     this.belifs.updateAgents(agents);
   };
 
+  onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
+    agent,
+    timestamp,
+  ) => {
+    if (
+      this.lastTimestampUpdate &&
+      timestamp.ms <= this.lastTimestampUpdate.ms
+    ) {
+      return;
+    }
+
+    this.lastTimestampUpdate = timestamp;
+    this.belifs.updatePos({ x: agent.x, y: agent.y });
+  };
+
   constructor(
     apiConnection: DeliverooApi,
     me: DeliverooAgentType,
@@ -61,18 +77,15 @@ export default class Agent {
     this.apiConnection = apiConnection;
 
     this.id = me.id;
-    this.pos = {
-      x: me.x,
-      y: me.y,
-    };
 
     this.apiConnection.onMap(this.onMap);
     this.apiConnection.onAgentConnected(this.onAgentConnected);
     this.apiConnection.onMsg(this.onMsg);
     this.apiConnection.onParcelsSensing(this.onParcelSensing);
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
+    this.apiConnection.onYou(this.onYou);
 
-    this.belifs = new BelifsSet(this, map);
+    this.belifs = new BelifsSet(map, { x: me.x, y: me.y });
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
@@ -83,10 +96,6 @@ export default class Agent {
       await apiConnection.me,
       await apiConnection.map,
     );
-  }
-
-  getPos(): Position {
-    return this.pos;
   }
 
   async run(): Promise<void> {
@@ -113,7 +122,13 @@ export default class Agent {
   async frameAdvance(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
+      info(
+        `Current position: (${this.belifs.getPos().x}, ${this.belifs.getPos().y})`,
+        this.id,
+      );
     }
+
+    // Business logic
 
     this.frame++;
   }

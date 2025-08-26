@@ -3,7 +3,6 @@ import {
   Parcel,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
-import Agent from "src/agent";
 
 enum TileType {
   WALL,
@@ -24,11 +23,15 @@ export class BelifsSet {
   private agents: DeliverooAgentType[] = [];
 
   constructor(
-    agent: Agent,
     map: { width: number; height: number; tiles: Tile[] },
+    pos: Position,
   ) {
     this.map = BelifsSet.convertMap(map);
-    this.pos = agent.getPos();
+    this.pos = pos;
+  }
+
+  updatePos(pos: Position): void {
+    this.pos = pos;
   }
 
   getPos(): Position {
