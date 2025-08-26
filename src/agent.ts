@@ -8,6 +8,7 @@ import {
 import config from "config";
 import { BelifsSet } from "src/belifs";
 import { debug, info } from "src/utils/log";
+import { PddlPlanner } from "src/pddl";
 
 const FRAME_ADVANCE_INTERVAL = 10;
 
@@ -20,6 +21,7 @@ export default class Agent {
   private frame: number = 0;
   private id: string;
   private belifs: BelifsSet;
+  private pddlPlanner: PddlPlanner;
   private lastTimestampUpdate: Timestamp | null = null;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
@@ -85,7 +87,8 @@ export default class Agent {
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
     this.apiConnection.onYou(this.onYou);
 
-    this.belifs = new BelifsSet(map, { x: me.x, y: me.y });
+    this.belifs = new BelifsSet(me.id, map, { x: me.x, y: me.y });
+    this.pddlPlanner = new PddlPlanner(me.id, this.belifs);
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
@@ -98,7 +101,7 @@ export default class Agent {
     );
   }
 
-  async run(): Promise<void> {
+  async run(): Promise<never> {
     this.apiConnection.connect();
 
     info(
@@ -128,7 +131,14 @@ export default class Agent {
       );
     }
 
-    // Business logic
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const plan = await this.pddlPlanner.solvePddlProblem();
+    for (const action of plan) {
+      info(`Executing action: ${action}`, this.id);
+    }
+
+    //quit
+    process.exit(0);
 
     this.frame++;
   }

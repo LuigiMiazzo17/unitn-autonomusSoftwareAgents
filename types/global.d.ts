@@ -171,25 +171,25 @@ declare module "@unitn-asa/deliveroo-js-client" {
 }
 
 declare module "@unitn-asa/pddl-client" {
-  export class PddlProblem {
-    constructor(
-      name: string,
-      objects: string,
-      init: string,
-      goal: string,
-    ): string;
-
-    toPddlString(): string;
-  }
-
   export type PddlPlanStep = {
     parallel: boolean;
     action: string;
     args: string[];
   };
 
+  export type PddlSolveError = {
+    result: {
+      call: string;
+      output: { plan: string };
+      output_type: string;
+      stderr: string;
+      stdout: string;
+    };
+    status: string;
+  };
+
   export async function onlineSolver(
     pddlDomain: string,
     pddlProblem: string,
-  ): Promise<PddlPlanStep[]>;
+  ): Promise<PddlPlanStep[]> | PddlSolveError;
 }

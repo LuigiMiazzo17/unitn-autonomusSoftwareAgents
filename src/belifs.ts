@@ -3,8 +3,10 @@ import {
   Parcel,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
+import crypto from "crypto";
+import { debug } from "src/utils/log";
 
-enum TileType {
+export enum TileType {
   WALL,
   SPAWNABLE,
   EMPTY,
@@ -17,15 +19,18 @@ export type Position = {
 };
 
 export class BelifsSet {
+  private id: string;
   private pos: Position;
   private map: TileType[][];
   private parcels: Parcel[] = [];
   private agents: DeliverooAgentType[] = [];
 
   constructor(
+    id: string,
     map: { width: number; height: number; tiles: Tile[] },
     pos: Position,
   ) {
+    this.id = id;
     this.map = BelifsSet.convertMap(map);
     this.pos = pos;
   }
@@ -40,6 +45,31 @@ export class BelifsSet {
 
   updateMap(width: number, height: number, tiles: Tile[]): void {
     this.map = BelifsSet.convertMap({ width, height, tiles });
+    this.agents = [];
+    this.parcels = [];
+  }
+
+  getMap(): TileType[][] {
+    return this.map;
+  }
+
+  getChecksumOfBelifs(): string {
+    const parcelsStr = this.parcels
+      .map((p) => `${p.id}-${p.x}-${p.y}-${p.carriedBy ?? "null"}`)
+      .sort()
+      .join("|");
+    const agentsStr = this.agents
+      .map((a) => `${a.id}-${a.x}-${a.y}`)
+      .sort()
+      .join("|");
+    const checksum = crypto
+      .createHash("md5")
+      .update(`${this.pos.x}-${this.pos.y}|${parcelsStr}|${agentsStr}`)
+      .digest("hex");
+
+    debug(`Belifs checksum: ${checksum}`, this.id);
+
+    return checksum;
   }
 
   updateParcels(parcels: Parcel[]): void {
@@ -51,6 +81,12 @@ export class BelifsSet {
         this.parcels.push(parcel);
       }
     }
+
+    debug(`Updated parcels: ${this.parcels.length}`, this.id);
+  }
+
+  getParcels(): Parcel[] {
+    return this.parcels;
   }
 
   updateAgents(agents: DeliverooAgentType[]): void {
@@ -62,6 +98,12 @@ export class BelifsSet {
         this.agents.push(agent);
       }
     }
+
+    debug(`Updated agents: ${this.agents.length}`, this.id);
+  }
+
+  getAgents(): DeliverooAgentType[] {
+    return this.agents;
   }
 
   static convertMap(m: {
@@ -88,71 +130,5 @@ export class BelifsSet {
     }
 
     return map;
-  }
-
-  definePddlProblem(): string {
-    const objects = ["agent1 - agent"];
-    const init = [];
-
-    for (let y = 0; y < this.map.length; y++) {
-      for (let x = 0; x < this.map[y].length; x++) {
-        const tile = this.map[y][x];
-        if (tile === TileType.WALL) {
-          continue;
-        }
-        objects.push(`tile${x}_${y} - tile`);
-
-        if (tile === TileType.SPAWNABLE) {
-          init.push(`(delivery_tile tile${x}_${y})`);
-        }
-
-        const directions = [
-          [0, 1],
-          [1, 0],
-          [0, -1],
-          [-1, 0],
-        ];
-
-        for (const [dx, dy] of directions) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (
-            nx >= 0 &&
-            nx < this.map[0].length &&
-            ny >= 0 &&
-            ny < this.map.length &&
-            this.map[ny][nx] !== TileType.WALL
-          ) {
-            init.push(`(adjacent tile${x}_${y} tile${nx}_${ny})`);
-          }
-        }
-      }
-    }
-
-    for (const parcel of this.parcels) {
-      if (parcel.carriedBy) {
-        continue;
-      }
-      objects.push(`parcel${parcel.id} - parcel`);
-      init.push(`(parcel_at parcel${parcel.id} tile${parcel.x}_${parcel.y})`);
-      init.push(`(not (delivered parcel${parcel.id}))`);
-    }
-
-    for (const agent of this.agents) {
-      init.push(`(blocked tile${agent.x}_${agent.y})`);
-    }
-
-    // init.push(`(at agent1 tile${this.pos.x}_${this.pos.y})`);
-    init.push(`(at agent1 tile2_3)`);
-
-    const goal = [];
-    for (const parcel of this.parcels) {
-      if (parcel.carriedBy) {
-        continue;
-      }
-      goal.push(`(delivered parcel${parcel.id})`);
-    }
-
-    return `(define (problem deliveroo-problem) (:domain deliveroo) (:objects ${objects.join("\n")}) (:init ${init.join("\n")}) (:goal (and ${goal.join("\n")})))`;
   }
 }

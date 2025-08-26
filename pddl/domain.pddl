@@ -1,4 +1,4 @@
-(define (domain default)
+(define (domain deliveroo)
   (:requirements :strips :typing :fluents)
   (:types agent tile parcel)
 
