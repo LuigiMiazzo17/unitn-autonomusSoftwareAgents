@@ -117,13 +117,13 @@ export class BelifsSet {
 
     for (const tile of m.tiles) {
       if (tile.type === 0) {
-        map[tile.y][tile.x] = TileType.EMPTY;
+        map[tile.y][tile.x] = TileType.WALL;
       } else if (tile.type === 1) {
         map[tile.y][tile.x] = TileType.SPAWNABLE;
       } else if (tile.type === 2) {
         map[tile.y][tile.x] = TileType.DELIVERY;
       } else if (tile.type === 3) {
-        map[tile.y][tile.x] = TileType.WALL;
+        map[tile.y][tile.x] = TileType.EMPTY;
       } else {
         throw new Error(`Unknown tile type: ${tile.type}`);
       }
