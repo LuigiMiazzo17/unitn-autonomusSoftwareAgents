@@ -28,6 +28,7 @@ export default class Agent {
   private plan: Queue<Intent> = new Queue<Intent>();
   private currentOperationMode: CurrentOperationMode =
     CurrentOperationMode.EXPLORING;
+  private moveFailCount: number = 0;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -76,9 +77,18 @@ export default class Agent {
       return;
     }
 
-    // TODO: Handle repositioning
-    // agent.x = Math.floor(agent.x);
-    // agent.y = Math.floor(agent.y);
+    if (this.moveFailCount >= config.maxMoveFailCount) {
+      agent.x = Math.floor(agent.x);
+      agent.y = Math.floor(agent.y);
+      this.belifs.updatePos({ x: agent.x, y: agent.y });
+      this.moveFailCount = 0;
+      warn(
+        `Too many move failures, resetting position to (${agent.x}, ${agent.y})`,
+        this.id,
+      );
+      this.plan = new Queue<Intent>();
+      this.currentOperationMode = CurrentOperationMode.EXPLORING;
+    }
 
     debug(
       `You event: position (${agent.x}, ${agent.y}) at ${timestamp.ms}`,
@@ -213,6 +223,7 @@ export default class Agent {
         `Move failed, expected position (${expected.x}, ${expected.y}) but got (${Math.floor(result.x)}, ${Math.floor(result.y)})`,
         this.id,
       );
+      this.moveFailCount += 1;
       return false;
     }
     this.belifs.updatePos(expected);

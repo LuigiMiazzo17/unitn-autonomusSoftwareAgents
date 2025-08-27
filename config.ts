@@ -9,4 +9,5 @@ if (!Object.keys(LOG_LEVELS).includes(logLevel)) {
 export default {
   host: process.env.HOST || "http://localhost:8080",
   logLevel: LOG_LEVELS[logLevel as keyof typeof LOG_LEVELS],
+  maxMoveFailCount: 3,
 };
