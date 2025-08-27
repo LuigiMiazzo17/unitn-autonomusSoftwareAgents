@@ -223,6 +223,7 @@ export default class Agent {
     const result = await this.apiConnection.emitPickup();
     if (result.length === 0) {
       error(`Pickup failed, no parcel picked up`, this.id);
+      this.belifs.pickupParcelFailedFromAction();
       return false;
     }
     for (const parcel of result) {

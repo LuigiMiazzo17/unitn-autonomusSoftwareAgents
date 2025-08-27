@@ -1,6 +1,6 @@
 import {
   Agent as DeliverooAgentType,
-  Parcel,
+  Parcel as DeliverooParcelType,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
 import crypto from "crypto";
@@ -24,7 +24,7 @@ export class BelifsSet {
   private id: string;
   private pos: Position;
   private map: TileType[][];
-  private parcels: Parcel[] = [];
+  private parcels: DeliverooParcelType[] = [];
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
 
@@ -75,7 +75,7 @@ export class BelifsSet {
     return checksum;
   }
 
-  updateParcels(parcels: Parcel[]): void {
+  updateParcels(parcels: DeliverooParcelType[]): void {
     for (const parcel of parcels) {
       const index = this.parcels.findIndex((p) => p.id === parcel.id);
       if (index !== -1) {
@@ -96,7 +96,7 @@ export class BelifsSet {
     debug(`Updated parcels: ${this.parcels.length}`, this.id);
   }
 
-  getParcels(): Parcel[] {
+  getParcels(): DeliverooParcelType[] {
     return this.parcels;
   }
 
@@ -105,12 +105,37 @@ export class BelifsSet {
     debug(`Picked parcel ${parcelId}`, this.id);
   }
 
+  pickupParcelFailedFromAction(): void {
+    for (const parcel of this.parcels) {
+      if (this.pos.x === parcel.x && this.pos.y === parcel.y) {
+        const pPos = this.parcels.find((p) => p.id === parcel.id);
+        if (pPos === undefined) {
+          error(
+            `Pickup failed for parcel ${parcel.id}, but was not in parcels discovered list`,
+            this.id,
+          );
+          return;
+        }
+        this.parcels = this.parcels.filter((p) => p.id !== parcel.id);
+        debug(
+          `Pickup failed for parcel ${parcel.id}, removing from discovered`,
+          this.id,
+        );
+      }
+    }
+  }
+
   deliverParcel(parcelId: string): void {
     if (this.carryingParcels.has(parcelId)) {
       this.carryingParcels.delete(parcelId);
       debug(`Delivered parcel ${parcelId}`, this.id);
     } else {
       debug(`Cannot deliver parcel ${parcelId} - not carrying it`, this.id);
+    }
+
+    if (this.isOnDeliveryTile()) {
+      this.parcels = this.parcels.filter((p) => p.id !== parcelId);
+      debug(`Removed parcel ${parcelId} from parcels list`, this.id);
     }
   }
 
@@ -131,7 +156,7 @@ export class BelifsSet {
     return this.agents;
   }
 
-  isCurrentTylePickupable(): boolean {
+  isPickupAvailable(): boolean {
     for (const parcel of this.parcels) {
       if (
         this.pos.x === parcel.x &&
@@ -144,11 +169,15 @@ export class BelifsSet {
     return false;
   }
 
-  isCurrentTyleDeliverable(): boolean {
-    if (
-      this.carryingParcels.size !== 0 &&
-      this.map[this.pos.y][this.pos.x] === TileType.DELIVERY
-    ) {
+  isDeliveryAvailable(): boolean {
+    if (this.carryingParcels.size !== 0 && this.isOnDeliveryTile()) {
+      return true;
+    }
+    return false;
+  }
+
+  isOnDeliveryTile(): boolean {
+    if (this.map[this.pos.y][this.pos.x] === TileType.DELIVERY) {
       return true;
     }
     return false;
@@ -157,12 +186,12 @@ export class BelifsSet {
   getRandomMovePlan(): Queue<Intent> {
     const queue = new Queue<Intent>();
 
-    if (this.isCurrentTylePickupable()) {
+    if (this.isPickupAvailable()) {
       queue.push(Intent.PICKUP);
       return queue;
     }
 
-    if (this.isCurrentTyleDeliverable()) {
+    if (this.isDeliveryAvailable()) {
       queue.push(Intent.DELIVER);
       return queue;
     }
