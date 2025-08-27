@@ -257,7 +257,7 @@ export default class Agent {
         return this.belifs.getRandomMovePlan();
       }
       case CurrentOperationMode.PDDL: {
-        info(`Planning in PDDL mode`, this.id);
+        debug(`Planning in PDDL mode`, this.id);
         const pddlPlan = await this.pddlPlanner.solvePddlProblem();
 
         if (pddlPlan === null) {

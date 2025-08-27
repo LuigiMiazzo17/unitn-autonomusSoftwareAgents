@@ -169,16 +169,3 @@ declare module "@unitn-asa/deliveroo-js-client" {
     constructor(host: string, token?: string | null, autoconnect?: boolean);
   }
 }
-
-declare module "@unitn-asa/pddl-client" {
-  export type PddlPlanStep = {
-    parallel: boolean;
-    action: string;
-    args: string[];
-  };
-
-  export async function onlineSolver(
-    pddlDomain: string,
-    pddlProblem: string,
-  ): Promise<PddlPlanStep[]> | undefined;
-}

@@ -15,6 +15,7 @@ export default defineConfig([
     "**/node_modules/**",
     "**/tests/**",
     "**/types/**",
+    "**/pddl/**",
   ]),
   tseslint.configs.recommended,
 ]);

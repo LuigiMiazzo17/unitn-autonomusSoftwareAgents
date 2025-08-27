@@ -1,10 +1,9 @@
-import { onlineSolver } from "@unitn-asa/pddl-client";
 import config from "config";
 import fs from "fs";
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
 import { Intent } from "src/itents";
-import { debug, error, warn, info } from "src/utils/log";
+import { debug, error, info } from "src/utils/log";
 
 export class PddlPlanner {
   private domain: string;
@@ -120,72 +119,80 @@ export class PddlPlanner {
   }
 
   async solvePddlProblem(): Promise<Queue<Intent> | null> {
-    info("Solving PDDL problem", this.agentId);
+    debug("Solving PDDL problem", this.agentId);
 
     const pddlProblem = this.definePddlProblem();
-    const plan = await onlineSolver(this.domain, pddlProblem);
+    const plan = await fetch("http://localhost:5001/solve", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        domain: this.domain,
+        problem: pddlProblem,
+      }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.status === "success" && Array.isArray(json.plan)) {
+          const queue = new Queue<Intent>();
+          for (const step of json.plan) {
+            let intent = undefined;
 
-    if (plan === undefined) {
-      warn(
-        `PDDL solver returned an invalid plan or no plan found`,
-        this.agentId,
-      );
-      return null;
-    }
+            if (step.startsWith("move")) {
+              const parts = step
+                .substring(5, step.length - 1)
+                .split(", ")
+                .map((s: string) => s.trim());
+              const from = parts[1];
+              const to = parts[2];
+              const [fromX, fromY] = from
+                .substring(4)
+                .split("_")
+                .map((v: string) => parseInt(v));
+              const [toX, toY] = to
+                .substring(4)
+                .split("_")
+                .map((v: string) => parseInt(v));
 
-    const intentQueue = new Queue<Intent>();
-
-    for (const step of plan) {
-      debug(
-        `PDDL Plan Step: ${step.action}(${step.args.join(", ")})`,
-        this.agentId,
-      );
-      let intent = null;
-      switch (step.action) {
-        case "MOVE":
-          {
-            const from = step.args[1];
-            const to = step.args[2];
-            const [fromX, fromY] = from
-              .substring(4)
-              .split("_")
-              .map((v) => parseInt(v));
-            const [toX, toY] = to
-              .substring(4)
-              .split("_")
-              .map((v) => parseInt(v));
-
-            if (toX === fromX + 1 && toY === fromY) {
-              intent = Intent.MOVE_RIGHT;
-            } else if (toX === fromX - 1 && toY === fromY) {
-              intent = Intent.MOVE_LEFT;
-            } else if (toX === fromX && toY === fromY + 1) {
-              intent = Intent.MOVE_UP;
-            } else if (toX === fromX && toY === fromY - 1) {
-              intent = Intent.MOVE_DOWN;
+              if (toX === fromX + 1 && toY === fromY) {
+                intent = Intent.MOVE_RIGHT;
+              } else if (toX === fromX - 1 && toY === fromY) {
+                intent = Intent.MOVE_LEFT;
+              } else if (toX === fromX && toY === fromY + 1) {
+                intent = Intent.MOVE_UP;
+              } else if (toX === fromX && toY === fromY - 1) {
+                intent = Intent.MOVE_DOWN;
+              } else {
+                error(
+                  `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
+                  this.agentId,
+                );
+                return null;
+              }
+            } else if (step.startsWith("pickup")) {
+              intent = Intent.PICKUP;
+            } else if (step.startsWith("deliver")) {
+              intent = Intent.DELIVER;
             } else {
-              error(
-                `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
-                this.agentId,
-              );
+              error(`Unknown action in PDDL plan: ${step}`, this.agentId);
               return null;
             }
+
+            if (intent !== undefined) {
+              queue.push(intent);
+            }
           }
-          break;
-        case "PICKUP":
-          intent = Intent.PICKUP;
-          break;
-        case "DELIVER":
-          intent = Intent.DELIVER;
-          break;
-        default:
-          error(`Unknown action in PDDL plan: ${step.action}`, this.agentId);
+          return queue;
+        } else {
           return null;
-      }
+        }
+      })
+      .catch((err) => {
+        error(`Error solving PDDL problem: ${err || "Unknown error"}`);
+        process.exit(1);
+      });
 
-      intentQueue.push(intent);
-    }
-
-    return intentQueue;
+    return plan;
   }
 }
