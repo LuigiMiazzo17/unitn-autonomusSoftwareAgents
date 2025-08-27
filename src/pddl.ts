@@ -4,7 +4,7 @@ import fs from "fs";
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
 import { Intent } from "src/itents";
-import { debug, error, info } from "src/utils/log";
+import { debug, error, warn, info } from "src/utils/log";
 
 export class PddlPlanner {
   private domain: string;
@@ -72,7 +72,7 @@ export class PddlPlanner {
     }
 
     for (const parcel of parcels) {
-      if (parcel.carriedBy) {
+      if (parcel.carriedBy !== null) {
         continue;
       }
       objects.push(`parcel${parcel.id} - parcel`);
@@ -119,19 +119,18 @@ export class PddlPlanner {
 )`;
   }
 
-  async solvePddlProblem(): Promise<Queue<Intent>> {
+  async solvePddlProblem(): Promise<Queue<Intent> | null> {
     info("Solving PDDL problem", this.agentId);
 
     const pddlProblem = this.definePddlProblem();
     const plan = await onlineSolver(this.domain, pddlProblem);
-    console.log(plan);
 
-    if (!Array.isArray(plan)) {
-      error(
-        `PDDL solver returned an invalid plan, stdout: '${plan.result.stdout}', stderr: '${plan.result.stderr}`,
+    if (plan === undefined) {
+      warn(
+        `PDDL solver returned an invalid plan or no plan found`,
         this.agentId,
       );
-      return new Queue<Intent>();
+      return null;
     }
 
     const intentQueue = new Queue<Intent>();
@@ -169,6 +168,7 @@ export class PddlPlanner {
                 `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
                 this.agentId,
               );
+              return null;
             }
           }
           break;
@@ -180,12 +180,10 @@ export class PddlPlanner {
           break;
         default:
           error(`Unknown action in PDDL plan: ${step.action}`, this.agentId);
-          return new Queue<Intent>();
+          return null;
       }
 
-      if (intent !== null) {
-        intentQueue.push(intent);
-      }
+      intentQueue.push(intent);
     }
 
     return intentQueue;
