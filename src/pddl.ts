@@ -1,5 +1,6 @@
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
+import config from "config";
 import { Intent } from "src/itents";
 import { debug, error, info } from "src/utils/log";
 
@@ -110,7 +111,7 @@ export class PddlPlanner {
     debug("Solving PDDL problem", this.agentId);
 
     const pddlProblem = this.definePddlProblem();
-    const plan = await fetch("http://localhost:5001/solve", {
+    const plan = await fetch(config.solverUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -119,6 +120,14 @@ export class PddlPlanner {
         problem: pddlProblem,
       }),
     })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(
+            `HTTP error while solving PDDL, status: ${res.status}`,
+          );
+        }
+        return res;
+      })
       .then((res) => res.json())
       .then((json) => {
         if (json.status === "success" && Array.isArray(json.plan)) {
