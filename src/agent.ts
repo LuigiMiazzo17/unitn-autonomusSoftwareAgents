@@ -136,7 +136,6 @@ export default class Agent {
       this.id,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
     while (true) {
       const start = Date.now();
       await this.frameAdvance();
