@@ -5,4 +5,11 @@ export enum Intent {
   MOVE_RIGHT,
   PICKUP,
   DELIVER,
+  NOOP,
+}
+
+export enum CurrentOperationMode {
+  PDDL,
+  CUSTOM_PLANNER,
+  EXPLORING,
 }

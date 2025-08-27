@@ -4,7 +4,9 @@ import {
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
 import crypto from "crypto";
-import { debug } from "src/utils/log";
+import { Queue } from "queue-typed";
+import { debug, error } from "src/utils/log";
+import { Intent } from "./itents";
 
 export enum TileType {
   WALL,
@@ -24,6 +26,7 @@ export class BelifsSet {
   private map: TileType[][];
   private parcels: Parcel[] = [];
   private agents: DeliverooAgentType[] = [];
+  private carryingParcels: Set<string> = new Set<string>();
 
   constructor(
     id: string,
@@ -82,11 +85,33 @@ export class BelifsSet {
       }
     }
 
+    const parcelIds = parcels.map((p) => p.id);
+    for (const parcelId of this.carryingParcels) {
+      if (!parcelIds.includes(parcelId)) {
+        this.carryingParcels.delete(parcelId);
+        debug(`Parcel ${parcelId} dropped`, this.id);
+      }
+    }
+
     debug(`Updated parcels: ${this.parcels.length}`, this.id);
   }
 
   getParcels(): Parcel[] {
     return this.parcels;
+  }
+
+  pickupParcel(parcelId: string): void {
+    this.carryingParcels.add(parcelId);
+    debug(`Picked parcel ${parcelId}`, this.id);
+  }
+
+  deliverParcel(parcelId: string): void {
+    if (this.carryingParcels.has(parcelId)) {
+      this.carryingParcels.delete(parcelId);
+      debug(`Delivered parcel ${parcelId}`, this.id);
+    } else {
+      debug(`Cannot deliver parcel ${parcelId} - not carrying it`, this.id);
+    }
   }
 
   updateAgents(agents: DeliverooAgentType[]): void {
@@ -104,6 +129,77 @@ export class BelifsSet {
 
   getAgents(): DeliverooAgentType[] {
     return this.agents;
+  }
+
+  isCurrentTylePickupable(): boolean {
+    for (const parcel of this.parcels) {
+      if (
+        this.pos.x === parcel.x &&
+        this.pos.y === parcel.y &&
+        !parcel.carriedBy
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  isCurrentTyleDeliverable(): boolean {
+    if (
+      this.carryingParcels.size !== 0 &&
+      this.map[this.pos.y][this.pos.x] === TileType.DELIVERY
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  getRandomMovePlan(): Queue<Intent> {
+    const queue = new Queue<Intent>();
+
+    if (this.isCurrentTylePickupable()) {
+      queue.push(Intent.PICKUP);
+      return queue;
+    }
+
+    if (this.isCurrentTyleDeliverable()) {
+      queue.push(Intent.DELIVER);
+      return queue;
+    }
+
+    const legalMoves: Intent[] = [];
+    const directions = {
+      MOVE_UP: { x: 0, y: 1 },
+      MOVE_DOWN: { x: 0, y: -1 },
+      MOVE_LEFT: { x: -1, y: 0 },
+      MOVE_RIGHT: { x: 1, y: 0 },
+    };
+
+    for (const [intentStr, dir] of Object.entries(directions)) {
+      const newX = this.pos.x + dir.x;
+      const newY = this.pos.y + dir.y;
+
+      if (
+        newX >= 0 &&
+        newX < this.map[0].length &&
+        newY >= 0 &&
+        newY < this.map.length &&
+        this.map[newY][newX] !== TileType.WALL
+      ) {
+        legalMoves.push(Intent[intentStr as keyof typeof Intent]);
+      }
+    }
+
+    if (legalMoves.length === 0) {
+      error("No legal moves available, this agent is stuck!", this.id);
+      queue.push(Intent.NOOP);
+      return queue;
+    }
+
+    const randomIndex = Math.floor(Math.random() * legalMoves.length);
+    queue.push(legalMoves[randomIndex]);
+
+    return queue;
   }
 
   static convertMap(m: {

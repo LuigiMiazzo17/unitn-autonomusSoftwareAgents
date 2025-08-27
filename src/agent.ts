@@ -9,7 +9,7 @@ import config from "config";
 import { BelifsSet, Position } from "src/belifs";
 import { debug, info, warn, error } from "src/utils/log";
 import { PddlPlanner } from "src/pddl";
-import { Intent } from "src/itents";
+import { Intent, CurrentOperationMode } from "src/itents";
 import { Queue } from "queue-typed";
 
 const FRAME_ADVANCE_INTERVAL = 100;
@@ -26,6 +26,8 @@ export default class Agent {
   private pddlPlanner: PddlPlanner;
   private lastTimestampUpdate: Timestamp | null = null;
   private plan: Queue<Intent> = new Queue<Intent>();
+  private currentOperationMode: CurrentOperationMode =
+    CurrentOperationMode.EXPLORING;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -43,19 +45,19 @@ export default class Agent {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAgentConnected: (state: string, agent: any) => void = (state, agent) => {
-    info(
+    debug(
       `Agent connected: '${JSON.stringify(agent)}’ is now ${state}`,
       this.id,
     );
   };
 
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
-    info(`Parcels sensing event: ${parcels.length} parcels`, this.id);
+    debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
     this.belifs.updateParcels(parcels);
   };
 
   onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
-    info(`Agents sensing event: ${agents.length} agents`, this.id);
+    debug(`Agents sensing event: ${agents.length} agents`, this.id);
     this.belifs.updateAgents(agents);
   };
 
@@ -74,6 +76,7 @@ export default class Agent {
       return;
     }
 
+    // TODO: Handle repositioning
     // agent.x = Math.floor(agent.x);
     // agent.y = Math.floor(agent.y);
 
@@ -141,19 +144,19 @@ export default class Agent {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
+    if (this.belifs.getParcels().length > 0) {
+      this.currentOperationMode = CurrentOperationMode.PDDL;
+    }
 
     let optionalIntent = this.plan.shift();
 
     if (optionalIntent === undefined) {
-      this.plan = await this.pddlPlanner.solvePddlProblem();
-      if (this.plan.length === 0) {
-        warn(`No plan found, skipping frame`, this.id);
-        process.exit(0);
-      }
+      this.plan = await this.getIntents();
+
       optionalIntent = this.plan.shift();
       if (optionalIntent === undefined) {
-        error(`Plan is weidly empty, exiting`, this.id);
-        process.exit(0);
+        warn(`Correctly got a plan, but no intent to execute`, this.id);
+        return;
       }
     }
 
@@ -186,6 +189,8 @@ export default class Agent {
         return await this.pickup();
       case Intent.DELIVER:
         return await this.deliver();
+      case Intent.NOOP:
+        return true;
       default:
         error(`Unknown intent: ${intent}`, this.id);
         return false;
@@ -220,6 +225,9 @@ export default class Agent {
       error(`Pickup failed, no parcel picked up`, this.id);
       return false;
     }
+    for (const parcel of result) {
+      this.belifs.pickupParcel(parcel.id);
+    }
     return true;
   }
 
@@ -229,6 +237,40 @@ export default class Agent {
       error(`Deliver failed, no parcel delivered`, this.id);
       return false;
     }
+    for (const parcel of result) {
+      this.belifs.deliverParcel(parcel.id);
+    }
     return true;
+  }
+
+  async getIntents(): Promise<Queue<Intent>> {
+    if (this.belifs.getParcels().length === 0) {
+      this.currentOperationMode = CurrentOperationMode.EXPLORING;
+    } else {
+      this.currentOperationMode = CurrentOperationMode.PDDL;
+    }
+
+    switch (this.currentOperationMode) {
+      case CurrentOperationMode.EXPLORING: {
+        info(`Planning in EXPLORING mode`, this.id);
+        return this.belifs.getRandomMovePlan();
+      }
+      case CurrentOperationMode.PDDL: {
+        info(`Planning in PDDL mode`, this.id);
+        const pddlPlan = await this.pddlPlanner.solvePddlProblem();
+
+        if (pddlPlan === null) {
+          warn(`PDDL planning failed, switching to EXPLORING mode`, this.id);
+          this.currentOperationMode = CurrentOperationMode.EXPLORING;
+          return this.belifs.getRandomMovePlan();
+        } else {
+          return pddlPlan;
+        }
+      }
+      default: {
+        error(`Unknown operation mode: ${this.currentOperationMode}`, this.id);
+        throw new Error(`Unknown operation mode: ${this.currentOperationMode}`);
+      }
+    }
   }
 }
