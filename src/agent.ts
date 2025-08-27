@@ -6,11 +6,13 @@ import {
   Parcel,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { BelifsSet } from "src/belifs";
-import { debug, info } from "src/utils/log";
+import { BelifsSet, Position } from "src/belifs";
+import { debug, info, warn, error } from "src/utils/log";
 import { PddlPlanner } from "src/pddl";
+import { Intent } from "src/itents";
+import { Queue } from "queue-typed";
 
-const FRAME_ADVANCE_INTERVAL = 10;
+const FRAME_ADVANCE_INTERVAL = 100;
 
 export type AgentOptions = {
   token?: string | null;
@@ -23,6 +25,7 @@ export default class Agent {
   private belifs: BelifsSet;
   private pddlPlanner: PddlPlanner;
   private lastTimestampUpdate: Timestamp | null = null;
+  private plan: Queue<Intent> = new Queue<Intent>();
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -62,13 +65,24 @@ export default class Agent {
   ) => {
     if (
       this.lastTimestampUpdate &&
-      timestamp.ms <= this.lastTimestampUpdate.ms
+      timestamp.frame < this.lastTimestampUpdate.frame
     ) {
+      warn(
+        `Ignoring out-of-order timestamp: ${timestamp.frame} <= ${this.lastTimestampUpdate.frame}`,
+        this.id,
+      );
       return;
     }
 
+    // agent.x = Math.floor(agent.x);
+    // agent.y = Math.floor(agent.y);
+
+    debug(
+      `You event: position (${agent.x}, ${agent.y}) at ${timestamp.ms}`,
+      this.id,
+    );
+
     this.lastTimestampUpdate = timestamp;
-    this.belifs.updatePos({ x: agent.x, y: agent.y });
   };
 
   constructor(
@@ -109,6 +123,7 @@ export default class Agent {
       this.id,
     );
 
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     while (true) {
       const start = Date.now();
       await this.frameAdvance();
@@ -125,21 +140,95 @@ export default class Agent {
   async frameAdvance(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
-      info(
-        `Current position: (${this.belifs.getPos().x}, ${this.belifs.getPos().y})`,
-        this.id,
-      );
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    const plan = await this.pddlPlanner.solvePddlProblem();
-    for (const action of plan) {
-      info(`Executing action: ${action}`, this.id);
+    let optionalIntent = this.plan.shift();
+
+    if (optionalIntent === undefined) {
+      this.plan = await this.pddlPlanner.solvePddlProblem();
+      if (this.plan.length === 0) {
+        warn(`No plan found, skipping frame`, this.id);
+        process.exit(0);
+      }
+      optionalIntent = this.plan.shift();
+      if (optionalIntent === undefined) {
+        error(`Plan is weidly empty, exiting`, this.id);
+        process.exit(0);
+      }
     }
 
-    //quit
-    process.exit(0);
+    const actionResult = await this.executeIntent(optionalIntent);
+    if (!actionResult) {
+      warn(`Action failed, replanning`, this.id);
+      this.plan = new Queue<Intent>();
+    } else {
+      debug(`Action succeeded`, this.id);
+    }
 
     this.frame++;
+  }
+
+  async executeIntent(intent: Intent): Promise<boolean> {
+    info(`Executing intent: ${Intent[intent]}`, this.id);
+
+    const pos = this.belifs.getPos();
+
+    switch (intent) {
+      case Intent.MOVE_UP:
+        return await this.move("up", { x: pos.x, y: pos.y + 1 });
+      case Intent.MOVE_DOWN:
+        return await this.move("down", { x: pos.x, y: pos.y - 1 });
+      case Intent.MOVE_LEFT:
+        return await this.move("left", { x: pos.x - 1, y: pos.y });
+      case Intent.MOVE_RIGHT:
+        return await this.move("right", { x: pos.x + 1, y: pos.y });
+      case Intent.PICKUP:
+        return await this.pickup();
+      case Intent.DELIVER:
+        return await this.deliver();
+      default:
+        error(`Unknown intent: ${intent}`, this.id);
+        return false;
+    }
+  }
+
+  async move(
+    direction: "up" | "down" | "left" | "right" | { x: number; y: number },
+    expected: Position,
+  ): Promise<boolean> {
+    const result = await this.apiConnection.emitMove(direction);
+    if (typeof result === "boolean") {
+      return result;
+    }
+    if (
+      Math.floor(result.x) !== expected.x ||
+      Math.floor(result.y) !== expected.y
+    ) {
+      error(
+        `Move failed, expected position (${expected.x}, ${expected.y}) but got (${Math.floor(result.x)}, ${Math.floor(result.y)})`,
+        this.id,
+      );
+      return false;
+    }
+    this.belifs.updatePos(expected);
+    return true;
+  }
+
+  async pickup(): Promise<boolean> {
+    const result = await this.apiConnection.emitPickup();
+    if (result.length === 0) {
+      error(`Pickup failed, no parcel picked up`, this.id);
+      return false;
+    }
+    return true;
+  }
+
+  async deliver(): Promise<boolean> {
+    const result = await this.apiConnection.emitPutdown();
+    if (result.length === 0) {
+      error(`Deliver failed, no parcel delivered`, this.id);
+      return false;
+    }
+    return true;
   }
 }
