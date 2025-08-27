@@ -1,12 +1,9 @@
-import config from "config";
-import fs from "fs";
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
 import { Intent } from "src/itents";
 import { debug, error, info } from "src/utils/log";
 
 export class PddlPlanner {
-  private domain: string;
   private agentId: string;
   private belifsSet: BelifsSet;
 
@@ -14,15 +11,6 @@ export class PddlPlanner {
     this.agentId = agentId;
     this.belifsSet = belifsSet;
 
-    try {
-      this.domain = fs.readFileSync(config.pddlDomain, "utf-8");
-    } catch (err) {
-      error(
-        `Error reading PDDL domain file: ${err || "Unknown error"}`,
-        this.agentId,
-      );
-      throw err;
-    }
     info("PddlExecutor initialized", agentId);
   }
 
@@ -128,7 +116,6 @@ export class PddlPlanner {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        domain: this.domain,
         problem: pddlProblem,
       }),
     })

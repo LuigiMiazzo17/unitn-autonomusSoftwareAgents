@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
+from pathlib import Path
+
+from flask import Flask, jsonify, request
 from unified_planning.io import PDDLReader
 from unified_planning.shortcuts import OneshotPlanner
-from flask import Flask, request, jsonify
-
 
 app = Flask(__name__)
 reader = PDDLReader()
+domain = (Path(__file__).parent / "domain.pddl").read_text()
 
 
 @app.route("/solve", methods=["POST"])
 def solve_route():
     try:
-        domain = request.get_json().get("domain")
         problem = request.get_json().get("problem")
 
         problem = reader.parse_problem_string(domain, problem)
