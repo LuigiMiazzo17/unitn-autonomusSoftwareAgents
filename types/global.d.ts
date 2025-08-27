@@ -177,19 +177,8 @@ declare module "@unitn-asa/pddl-client" {
     args: string[];
   };
 
-  export type PddlSolveError = {
-    result: {
-      call: string;
-      output: { plan: string };
-      output_type: string;
-      stderr: string;
-      stdout: string;
-    };
-    status: string;
-  };
-
   export async function onlineSolver(
     pddlDomain: string,
     pddlProblem: string,
-  ): Promise<PddlPlanStep[]> | PddlSolveError;
+  ): Promise<PddlPlanStep[]> | undefined;
 }
