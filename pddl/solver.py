@@ -35,9 +35,10 @@ def solve_route():
             {"status": "success", "plan": [str(action) for action in plan.actions]}
         )
     else:
-        return jsonify(
-            {"status": "error", "msg": "No plan found within the time limit"}
-        ), 404
+        return (
+            jsonify({"status": "error", "msg": "No plan found within the time limit"}),
+            404,
+        )
     # except Exception as e:
     #     return jsonify({"status": "error", "msg": str(e)}), 500
 

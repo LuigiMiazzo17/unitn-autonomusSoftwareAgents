@@ -27,7 +27,7 @@ export default class Agent {
   private lastTimestampUpdate: Timestamp | null = null;
   private plan: Queue<Intent> = new Queue<Intent>();
   private currentOperationMode: CurrentOperationMode =
-    CurrentOperationMode.EXPLORING;
+    CurrentOperationMode.HUNTING;
   private moveFailCount: number = 0;
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
@@ -87,7 +87,7 @@ export default class Agent {
         this.id,
       );
       this.plan = new Queue<Intent>();
-      this.currentOperationMode = CurrentOperationMode.EXPLORING;
+      this.currentOperationMode = CurrentOperationMode.HUNTING;
     }
 
     debug(
@@ -172,7 +172,20 @@ export default class Agent {
     const actionResult = await this.executeIntent(optionalIntent);
     if (!actionResult) {
       warn(`Action failed, replanning`, this.id);
-      this.plan = new Queue<Intent>();
+      switch (optionalIntent) {
+        case Intent.MOVE_UP:
+        case Intent.MOVE_DOWN:
+        case Intent.MOVE_LEFT:
+        case Intent.MOVE_RIGHT: {
+          this.plan.addAt(0, optionalIntent);
+          break;
+        }
+        default: {
+          this.plan = new Queue<Intent>();
+          this.currentOperationMode = CurrentOperationMode.HUNTING;
+          break;
+        }
+      }
     } else {
       debug(`Action succeeded`, this.id);
     }
@@ -256,15 +269,17 @@ export default class Agent {
 
   async getIntents(): Promise<Queue<Intent>> {
     if (this.belifs.getParcels().length === 0) {
-      this.currentOperationMode = CurrentOperationMode.EXPLORING;
+      this.currentOperationMode = CurrentOperationMode.HUNTING;
+      debug("Set HUNTING mode", this.id);
     } else {
       this.currentOperationMode = CurrentOperationMode.PDDL;
+      debug("Set PDDL mode", this.id);
     }
 
     switch (this.currentOperationMode) {
-      case CurrentOperationMode.EXPLORING: {
-        info(`Planning in EXPLORING mode`, this.id);
-        return this.belifs.getRandomMovePlan();
+      case CurrentOperationMode.HUNTING: {
+        info(`Planning in HUNTING mode`, this.id);
+        return this.belifs.getSmartMovePlan();
       }
       case CurrentOperationMode.PDDL: {
         debug(`Planning in PDDL mode`, this.id);
@@ -272,8 +287,8 @@ export default class Agent {
 
         if (pddlPlan === null) {
           warn(`PDDL planning failed, switching to EXPLORING mode`, this.id);
-          this.currentOperationMode = CurrentOperationMode.EXPLORING;
-          return this.belifs.getRandomMovePlan();
+          this.currentOperationMode = CurrentOperationMode.HUNTING;
+          return this.belifs.getSmartMovePlan();
         } else {
           return pddlPlan;
         }

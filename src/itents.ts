@@ -11,5 +11,5 @@ export enum Intent {
 export enum CurrentOperationMode {
   PDDL,
   CUSTOM_PLANNER,
-  EXPLORING,
+  HUNTING,
 }

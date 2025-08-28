@@ -20,6 +20,11 @@ export type Position = {
   y: number;
 };
 
+type SpawnableTiles = {
+  pos: Position;
+  checkedCount: number;
+};
+
 export class BelifsSet {
   private id: string;
   private pos: Position;
@@ -27,6 +32,7 @@ export class BelifsSet {
   private parcels: DeliverooParcelType[] = [];
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
+  private spawnableTiles: SpawnableTiles[];
 
   constructor(
     id: string,
@@ -36,6 +42,14 @@ export class BelifsSet {
     this.id = id;
     this.map = BelifsSet.convertMap(map);
     this.pos = pos;
+    this.spawnableTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
+      )
+      .flat() as SpawnableTiles[];
   }
 
   updatePos(pos: Position): void {
@@ -183,7 +197,7 @@ export class BelifsSet {
     return false;
   }
 
-  getRandomMovePlan(): Queue<Intent> {
+  getSmartMovePlan(): Queue<Intent> {
     const queue = new Queue<Intent>();
 
     if (this.isPickupAvailable()) {
@@ -196,6 +210,39 @@ export class BelifsSet {
       return queue;
     }
 
+    const lessSeenedSpawnableTiles = this.spawnableTiles.sort(
+      (a, b) => a.checkedCount - b.checkedCount,
+    );
+    const lessSeenedSpawnable =
+      lessSeenedSpawnableTiles[
+        Math.floor(Math.random() * lessSeenedSpawnableTiles.length)
+      ];
+
+    if (lessSeenedSpawnable) {
+      lessSeenedSpawnable.checkedCount += 1;
+      const pathToSpawnable = this.dijsktra(this.pos, lessSeenedSpawnable.pos);
+      if (pathToSpawnable && pathToSpawnable.length > 0) {
+        console.log(this.pos);
+        for (const intent of pathToSpawnable) {
+          console.log(Intent[intent]);
+          queue.push(intent);
+        }
+      } else {
+        error(
+          `No path found to spawnable tile at (${lessSeenedSpawnable.pos.x}, ${lessSeenedSpawnable.pos.y})`,
+          this.id,
+        );
+        return this.randomMove();
+      }
+    } else {
+      throw new Error("No spawnable tiles found");
+    }
+
+    return queue;
+  }
+
+  randomMove(): Queue<Intent> {
+    const queue = new Queue<Intent>();
     const legalMoves: Intent[] = [];
     const directions = {
       MOVE_UP: { x: 0, y: 1 },
@@ -229,6 +276,101 @@ export class BelifsSet {
     queue.push(legalMoves[randomIndex]);
 
     return queue;
+  }
+
+  dijsktra(start: Position, goal: Position): Intent[] | null {
+    const directions: {
+      [key: string]: { dx: number; dy: number; intent: Intent };
+    } = {
+      up: { dx: 0, dy: 1, intent: Intent.MOVE_UP },
+      down: { dx: 0, dy: -1, intent: Intent.MOVE_DOWN },
+      left: { dx: -1, dy: 0, intent: Intent.MOVE_LEFT },
+      right: { dx: 1, dy: 0, intent: Intent.MOVE_RIGHT },
+    };
+
+    const rows = this.map.length;
+    const cols = this.map[0].length;
+
+    const distances = Array.from({ length: rows }, () =>
+      Array(cols).fill(Infinity),
+    );
+    const previous = Array.from({ length: rows }, () => Array(cols).fill(null));
+    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+
+    distances[start.y][start.x] = 0;
+
+    const pq: { pos: Position; dist: number }[] = [];
+    pq.push({ pos: start, dist: 0 });
+
+    while (pq.length > 0) {
+      pq.sort((a, b) => a.dist - b.dist);
+      const current = pq.shift()!;
+      const { x, y } = current.pos;
+
+      if (visited[y][x]) continue;
+      visited[y][x] = true;
+
+      if (x === goal.x && y === goal.y) break;
+
+      for (const dir in directions) {
+        const { dx, dy } = directions[dir];
+        const nx = x + dx;
+        const ny = y + dy;
+
+        if (
+          nx >= 0 &&
+          nx < cols &&
+          ny >= 0 &&
+          ny < rows &&
+          this.map[ny][nx] !== TileType.WALL
+        ) {
+          if (
+            this.agents
+              .filter((a) => a.id !== this.id)
+              .some((a) => a.x === nx && a.y === ny)
+          ) {
+            continue;
+          }
+          const alt = distances[y][x] + 1;
+          if (alt < distances[ny][nx]) {
+            distances[ny][nx] = alt;
+            previous[ny][nx] = { x, y };
+            pq.push({ pos: { x: nx, y: ny }, dist: alt });
+          }
+        }
+      }
+    }
+
+    if (distances[goal.y][goal.x] === Infinity) {
+      return null;
+    }
+
+    const path: Position[] = [];
+    let curr: Position | null = goal;
+    while (curr) {
+      path.push(curr);
+      curr = previous[curr.y][curr.x];
+    }
+    path.reverse();
+
+    const intents: Intent[] = [];
+    for (let i = 1; i < path.length; i++) {
+      const from = path[i - 1];
+      const to = path[i];
+      if (to.x === from.x && to.y === from.y + 1) {
+        intents.push(Intent.MOVE_UP);
+      } else if (to.x === from.x && to.y === from.y - 1) {
+        intents.push(Intent.MOVE_DOWN);
+      } else if (to.x === from.x - 1 && to.y === from.y) {
+        intents.push(Intent.MOVE_LEFT);
+      } else if (to.x === from.x + 1 && to.y === from.y) {
+        intents.push(Intent.MOVE_RIGHT);
+      } else {
+        error("Failed parsing dijistra outcome", this.id);
+      }
+    }
+
+    return intents;
   }
 
   static convertMap(m: {

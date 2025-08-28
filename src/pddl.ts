@@ -60,11 +60,17 @@ export class PddlPlanner {
     }
 
     for (const parcel of parcels) {
-      if (parcel.carriedBy !== null) {
+      if (parcel.carriedBy !== null && parcel.carriedBy !== this.agentId) {
         continue;
       }
       objects.push(`parcel${parcel.id} - parcel`);
       init.push(`(parcel_at parcel${parcel.id} tile${parcel.x}_${parcel.y})`);
+      if (parcel.carriedBy === this.agentId) {
+        init.push(`(carrying agent1 parcel${parcel.id})`);
+      } else {
+        init.push(`(not (carrying agent1 parcel${parcel.id}))`);
+      }
+
       init.push(`(not (delivered parcel${parcel.id}))`);
     }
 
@@ -82,7 +88,7 @@ export class PddlPlanner {
       goal.push(`(delivered parcel${parcel.id})`);
     }
 
-    debug("PddlProblem Generated", this.agentId);
+    debug("PddlProblem generated", this.agentId);
 
     let goalStr = goal.length > 1 ? "\n        (and\n        " : "\n        ";
     goalStr += goal.join("\n        ");
