@@ -272,7 +272,7 @@ def solve_route():
         )
 
 
-@app.route("/probem", methods=["POST"])
+@app.route("/problem", methods=["POST"])
 def define_problem():
     if not request.json:
         return jsonify({"status": "error", "msg": "No JSON body provided"}), 400
