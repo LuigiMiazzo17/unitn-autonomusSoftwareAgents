@@ -6,6 +6,7 @@ import string
 from flask import Flask, jsonify, request
 from unified_planning.engines.engine import Engine
 from unified_planning.io import PDDLReader
+from unified_planning.model import Object
 from unified_planning.model.expression import ExpressionManager
 from unified_planning.model.fluent import Fluent
 from unified_planning.model.problem import Problem
@@ -44,6 +45,44 @@ class CustomReplanner:
             if obj.name == name:
                 return obj
         raise ValueError(f"Object {name} not found")
+
+    def get_object_name_and_type(self, stmt: str) -> tuple[str, Type]:
+        stmts = CustomReplanner.parse_statement(stmt)
+        if len(stmts) != 1:
+            raise ValueError("Only single objects are supported")
+        object_parts = [p.strip() for p in stmts[0].split("-")]
+        if len(object_parts) != 2:
+            raise ValueError("Invalid object definition")
+
+        obj_name = object_parts[0]
+        obj_type = self.types.get(object_parts[1], None)
+        if obj_type is None:
+            raise ValueError(f"Type {object_parts[1]} not found")
+        return obj_name, obj_type
+
+    def add_object(self, stmt: str) -> None:
+        obj_name, obj_type = self.get_object_name_and_type(stmt)
+        if obj_name in [o.name for o in self.problem.all_objects]:
+            raise ValueError(f"Object {obj_name} already exists")
+        self.problem.add_object(Object(obj_name, obj_type))
+
+    def remove_object(self, stmt: str) -> None:
+        obj_name, obj_type = self.get_object_name_and_type(stmt)
+        obj = self.get_object(obj_name)
+        if obj.type != obj_type:
+            raise ValueError(f"Object {obj_name} is not of type {obj_type}")
+        self.problem.all_objects.remove(obj)
+
+        to_remove = []
+        for iv in self.problem.initial_values.keys():
+            if obj in iv.get_contained_names():
+                to_remove.append(iv)
+        for iv in to_remove:
+            del self.problem.initial_values[iv]
+        to_remove = []
+        for g in self.problem.goals:
+            if obj in g.get_contained_names():
+                to_remove.append(g)
 
     def add_initial_value(self, stmt: str) -> None:
         stmts = CustomReplanner.parse_statement(stmt)
@@ -192,6 +231,17 @@ def solve_route():
 
     replanner: CustomReplanner = REPLANNERS[id]
 
+    for obj in differences["objects"]["add"]:
+        try:
+            replanner.add_object(obj.strip("()").strip())
+        except Exception as e:
+            return jsonify({"status": "error", "msg": str(e)}), 400
+    for obj in differences["objects"]["remove"]:
+        try:
+            replanner.remove_object(obj.strip("()").strip())
+        except Exception as e:
+            return jsonify({"status": "error", "msg": str(e)}), 400
+
     for initial_value in differences["init"]["add"]:
         try:
             replanner.add_initial_value(initial_value.strip("()").strip())
@@ -204,7 +254,10 @@ def solve_route():
             return jsonify({"status": "error", "msg": str(e)}), 400
 
     if differences["goal"] is not None:
-        replanner.update_goal(differences["goal"])
+        try:
+            replanner.update_goal(differences["goal"].strip("()").strip())
+        except Exception as e:
+            return jsonify({"status": "error", "msg": str(e)}), 400
 
     plan = replanner.resolve(timeout=time_limit)
 
@@ -232,8 +285,7 @@ def define_problem():
         return jsonify({"status": "error", "msg": "No problem provided"}), 400
 
     try:
-        # id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
-        id = "95KXRNMQ68ZF"  # FIXME: testing purposes
+        id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
         problem = PDDLReader().parse_problem_string(domain, pddl_problem_str)
         REPLANNERS[id] = CustomReplanner(problem)
         return jsonify({"status": "success", "id": id}), 201
