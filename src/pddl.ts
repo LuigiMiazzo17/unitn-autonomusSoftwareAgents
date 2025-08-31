@@ -84,8 +84,8 @@ export class PddlPlanner {
 
     const pos = this.belifsSet.getPos();
 
-    let objects = [];
-    let init = [];
+    const objects = [];
+    const init = [];
 
     for (const parcel of parcels) {
       if (parcel.carriedBy !== null && parcel.carriedBy !== this.agentId) {
@@ -131,7 +131,7 @@ export class PddlPlanner {
     const [dynamicObjects, dynamicInit, goal] =
       this.getDynamicObjectsAndInitAndGoal();
 
-    let objectsDiff: { add: string[]; remove: string[] } = {
+    const objectsDiff: { add: string[]; remove: string[] } = {
       add: [],
       remove: [],
     };
