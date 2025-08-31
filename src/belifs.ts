@@ -89,13 +89,24 @@ export class BelifsSet {
     return checksum;
   }
 
-  updateParcels(parcels: DeliverooParcelType[]): void {
+  updateParcels(parcels: DeliverooParcelType[]): boolean {
+    let somethingChanged = false;
     for (const parcel of parcels) {
       const index = this.parcels.findIndex((p) => p.id === parcel.id);
       if (index !== -1) {
         this.parcels[index] = parcel;
+        if (parcel.carriedBy && !this.carryingParcels.has(parcel.id)) {
+          this.carryingParcels.add(parcel.id);
+          debug(
+            `Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`,
+            this.id,
+          );
+          somethingChanged = true;
+        }
       } else {
         this.parcels.push(parcel);
+        debug(`Discovered new parcel ${parcel.id}`, this.id);
+        somethingChanged = true;
       }
     }
 
@@ -104,10 +115,12 @@ export class BelifsSet {
       if (!parcelIds.includes(parcelId)) {
         this.carryingParcels.delete(parcelId);
         debug(`Parcel ${parcelId} dropped`, this.id);
+        somethingChanged = true;
       }
     }
 
     debug(`Updated parcels: ${this.parcels.length}`, this.id);
+    return somethingChanged;
   }
 
   getParcels(): DeliverooParcelType[] {
@@ -197,7 +210,7 @@ export class BelifsSet {
     return false;
   }
 
-  getSmartMovePlan(): Queue<Intent> {
+  getHuntingMovePlan(): Queue<Intent> {
     const queue = new Queue<Intent>();
 
     if (this.isPickupAvailable()) {
@@ -278,7 +291,7 @@ export class BelifsSet {
     return queue;
   }
 
-  dijsktra(start: Position, goal: Position): Intent[] | null {
+  distance_vector(start: Position): [number[][], (Position | null)[][]] {
     const directions: {
       [key: string]: { dx: number; dy: number; intent: Intent };
     } = {
@@ -310,8 +323,6 @@ export class BelifsSet {
       if (visited[y][x]) continue;
       visited[y][x] = true;
 
-      if (x === goal.x && y === goal.y) break;
-
       for (const dir in directions) {
         const { dx, dy } = directions[dir];
         const nx = x + dx;
@@ -341,6 +352,14 @@ export class BelifsSet {
       }
     }
 
+    return [distances, previous];
+  }
+
+  get_path_from_distances(
+    distances: number[][],
+    previous: (Position | null)[][],
+    goal: Position,
+  ): Intent[] | null {
     if (distances[goal.y][goal.x] === Infinity) {
       return null;
     }
@@ -373,6 +392,11 @@ export class BelifsSet {
     return intents;
   }
 
+  dijsktra(start: Position, goal: Position): Intent[] | null {
+    const [distances, previous] = this.distance_vector(start);
+    return this.get_path_from_distances(distances, previous, goal);
+  }
+
   static convertMap(m: {
     width: number;
     height: number;
@@ -397,5 +421,135 @@ export class BelifsSet {
     }
 
     return map;
+  }
+
+  getSmartPlan(): Queue<Intent> | null {
+    // for each parcel we discoveered, try to find a possible arrangement to pickup and deliver it
+    // the metric should be the total distance traveled to pickup and deliver all parcels
+    // parcels are a very little number, so we can try all combinations
+
+    const parcelsToPickup = this.parcels.filter((p) => !p.carriedBy);
+
+    if (parcelsToPickup.length === 0 && this.carryingParcels.size === 0) {
+      return null;
+    }
+
+    // explore all combinations of parcels to pickup and deliver
+    // and find the one with the minimum distance
+    type Step = {
+      pos: Position;
+      carrying: Set<string>;
+      toPickup: DeliverooParcelType[];
+      plan: Intent[];
+      distance: number;
+    };
+
+    const initialStep: Step = {
+      pos: this.pos,
+      carrying: new Set(this.carryingParcels),
+      toPickup: parcelsToPickup,
+      plan: [],
+      distance: 0,
+    };
+
+    const deliveryTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => pos as Position),
+      )
+      .flat();
+
+    const queue: Step[] = [initialStep];
+    let bestPlan: Intent[] | null = null;
+    let bestDistance = Infinity;
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const [distances, previous] = this.distance_vector(current.pos);
+
+      // if we have a better plan, update it
+      if (current.toPickup.length === 0 && current.carrying.size === 0) {
+        if (current.distance < bestDistance) {
+          bestDistance = current.distance;
+          bestPlan = current.plan;
+        }
+        continue;
+      }
+
+      // try to pickup each parcel
+      for (let i = 0; i < current.toPickup.length; i++) {
+        const parcel = current.toPickup[i];
+        const pathToParcel = this.get_path_from_distances(distances, previous, {
+          x: parcel.x,
+          y: parcel.y,
+        });
+        if (pathToParcel) {
+          const newCarrying = new Set(current.carrying);
+          newCarrying.add(parcel.id);
+          const newToPickup = current.toPickup.filter((_, idx) => idx !== i);
+          const newPlan = current.plan.concat(pathToParcel, [Intent.PICKUP]);
+          const newDistance = current.distance + pathToParcel.length + 1;
+          queue.push({
+            pos: { x: parcel.x, y: parcel.y },
+            carrying: newCarrying,
+            toPickup: newToPickup,
+            plan: newPlan,
+            distance: newDistance,
+          });
+        }
+      }
+
+      // try to deliver each carrying parcel
+      for (const parcelId of current.carrying) {
+        const parcel = this.parcels.find((p) => p.id === parcelId);
+        if (parcel) {
+          // get closest delivery tile
+          let deliveryTile: Position | null = null;
+          let minDist = Infinity;
+          for (const dt of deliveryTiles) {
+            if (distances[dt.y][dt.x] < minDist) {
+              minDist = distances[dt.y][dt.x];
+              deliveryTile = dt;
+            }
+          }
+          if (!deliveryTile) {
+            error("No delivery tile found", this.id);
+            continue;
+          }
+          const pathToDelivery = this.get_path_from_distances(
+            distances,
+            previous,
+            deliveryTile,
+          );
+          if (pathToDelivery) {
+            const newCarrying = new Set(current.carrying);
+            newCarrying.delete(parcelId);
+            const newPlan = current.plan.concat(pathToDelivery, [
+              Intent.DELIVER,
+            ]);
+            const newDistance = current.distance + pathToDelivery.length + 1;
+            queue.push({
+              pos: deliveryTile,
+              carrying: newCarrying,
+              toPickup: current.toPickup,
+              plan: newPlan,
+              distance: newDistance,
+            });
+          }
+        }
+      }
+    }
+
+    if (bestPlan) {
+      const intentQueue = new Queue<Intent>();
+      for (const intent of bestPlan) {
+        intentQueue.push(intent);
+      }
+      return intentQueue;
+    }
+
+    return null;
   }
 }

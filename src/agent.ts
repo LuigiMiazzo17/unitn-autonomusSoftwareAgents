@@ -54,7 +54,11 @@ export default class Agent {
 
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    this.belifs.updateParcels(parcels);
+    const somethingChanged = this.belifs.updateParcels(parcels);
+    if (somethingChanged && config.planner !== "pddl") {
+      info(`Parcels changed, dropping plan`, this.id);
+      // this.plan = new Queue<Intent>();
+    }
   };
 
   onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
@@ -152,9 +156,6 @@ export default class Agent {
   async frameAdvance(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
-    }
-    if (this.belifs.getParcels().length > 0) {
-      this.currentOperationMode = CurrentOperationMode.PDDL;
     }
 
     let optionalIntent = this.plan.shift();
@@ -272,25 +273,28 @@ export default class Agent {
       this.currentOperationMode = CurrentOperationMode.HUNTING;
       debug("Set HUNTING mode", this.id);
     } else {
-      this.currentOperationMode = CurrentOperationMode.PDDL;
+      this.currentOperationMode = CurrentOperationMode.PLANNER;
       debug("Set PDDL mode", this.id);
     }
 
     switch (this.currentOperationMode) {
       case CurrentOperationMode.HUNTING: {
         info(`Planning in HUNTING mode`, this.id);
-        return this.belifs.getSmartMovePlan();
+        return this.belifs.getHuntingMovePlan();
       }
-      case CurrentOperationMode.PDDL: {
-        debug(`Planning in PDDL mode`, this.id);
-        const pddlPlan = await this.pddlPlanner.solvePddlProblem();
+      case CurrentOperationMode.PLANNER: {
+        debug(`Planning in Planner mode`, this.id);
+        const plan =
+          config.planner === "pddl"
+            ? await this.pddlPlanner.solvePddlProblem()
+            : this.belifs.getSmartPlan();
 
-        if (pddlPlan === null) {
+        if (plan === null) {
           warn(`PDDL planning failed, switching to EXPLORING mode`, this.id);
           this.currentOperationMode = CurrentOperationMode.HUNTING;
-          return this.belifs.getSmartMovePlan();
+          return this.belifs.getHuntingMovePlan();
         } else {
-          return pddlPlan;
+          return plan;
         }
       }
       default: {
