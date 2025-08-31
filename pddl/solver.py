@@ -93,7 +93,7 @@ class CustomReplanner:
             stmts = stmts[1:]
 
         if len(stmts) == 0:
-            raise ValueError("Invalid initial value")
+            raise ValueError("Invalid initial value, got only 'not'")
         elif len(stmts) > 1:
             raise ValueError("Only single fluents are supported in initial values")
 
@@ -112,7 +112,7 @@ class CustomReplanner:
             stmts = stmts[1:]
 
         if len(stmts) == 0:
-            raise ValueError("Invalid initial value")
+            raise ValueError("Invalid initial value, got only 'not'")
         elif len(stmts) > 1:
             raise ValueError("Only single fluents are supported in initial values")
 
@@ -181,7 +181,7 @@ class CustomReplanner:
             stmts.append(current_stmt.strip("() "))
 
         if len(stmts) == 0:
-            raise ValueError("Invalid initial value")
+            raise ValueError("Parsing failed, got empty statement")
         return stmts
 
 
@@ -284,13 +284,14 @@ def define_problem():
     if pddl_problem_str is None:
         return jsonify({"status": "error", "msg": "No problem provided"}), 400
 
-    try:
-        id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
-        problem = PDDLReader().parse_problem_string(domain, pddl_problem_str)
-        REPLANNERS[id] = CustomReplanner(problem)
-        return jsonify({"status": "success", "id": id}), 201
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)}), 500
+    # try:
+    id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
+    problem = PDDLReader().parse_problem_string(domain, pddl_problem_str)
+    REPLANNERS[id] = CustomReplanner(problem)
+    return jsonify({"status": "success", "id": id}), 201
+    # except Exception as e:
+    #     print(e)
+    #     return jsonify({"status": "error", "msg": str(e)}), 500
 
 
 @app.route("/problem", methods=["DELETE"])

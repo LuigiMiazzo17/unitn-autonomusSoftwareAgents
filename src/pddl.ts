@@ -119,8 +119,7 @@ export class PddlPlanner {
     }
 
     debug("PddlProblem dynamic objects generated", this.agentId);
-    let goalStr =
-      this.goal.length > 1 ? "\n        (and\n        " : "\n        ";
+    let goalStr = goal.length > 1 ? "\n        (and\n        " : "\n        ";
     goalStr += goal.join("\n        ");
     if (goal.length > 1) {
       goalStr += "\n        )";
@@ -189,16 +188,15 @@ export class PddlPlanner {
           domain: pddlDomain,
         }),
       })
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error(
-              `HTTP error while creating PDDL problem, status: ${res.status}`,
-            );
-          }
-          return res;
-        })
         .then((res) => res.json())
         .then((json) => {
+          if (json.status === "error") {
+            error(
+              `Error from PDDL solver: ${json.msg || "Unknown error"}`,
+              this.agentId,
+            );
+            throw new Error(json.msg || "Unknown error");
+          }
           if (json.id === undefined) {
             throw new Error("No id returned from PDDL solver");
           }
@@ -238,23 +236,19 @@ export class PddlPlanner {
       },
       body: JSON.stringify({
         id: this.id,
-        diff: {
+        differences: {
           objects: objectsDiff,
           init: initDiff,
           goal: goalDiff,
         },
       }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(
-            `HTTP error while solving PDDL problem, status: ${res.status}`,
-          );
-        }
-        return res;
-      })
       .then((res) => res.json())
       .then((json) => {
+        if (json.status === "error") {
+          error(`Error from PDDL solver: ${json.msg || "Unknown error"}`);
+          throw new Error(json.msg || "Unknown error");
+        }
         if (json.status === "success" && Array.isArray(json.plan)) {
           return json.plan;
         } else {
