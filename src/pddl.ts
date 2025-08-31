@@ -118,7 +118,7 @@ export class PddlPlanner {
       goal.push(`(delivered parcel${parcel.id})`);
     }
 
-    debug("PddlProblem generated", this.agentId);
+    debug("PddlProblem dynamic objects generated", this.agentId);
     let goalStr =
       this.goal.length > 1 ? "\n        (and\n        " : "\n        ";
     goalStr += goal.join("\n        ");
@@ -178,6 +178,7 @@ export class PddlPlanner {
           )
         )`;
 
+      info("Creating new PDDL problem", this.agentId);
       this.id = await fetch(config.solverHost + "/problem", {
         method: "POST",
         headers: {
@@ -229,6 +230,7 @@ export class PddlPlanner {
       debug("PDDL problem updated", this.agentId);
     }
 
+    debug("Posting PDDL problem update", this.agentId);
     return await fetch(config.solverHost + "/solve", {
       method: "POST",
       headers: {
