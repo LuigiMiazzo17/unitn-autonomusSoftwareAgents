@@ -6,7 +6,6 @@ import string
 from flask import Flask, jsonify, request
 from unified_planning.engines.engine import Engine
 from unified_planning.io import PDDLReader
-from unified_planning.model import problem
 from unified_planning.model.expression import ExpressionManager
 from unified_planning.model.fluent import Fluent
 from unified_planning.model.problem import Problem
@@ -46,36 +45,105 @@ class CustomReplanner:
                 return obj
         raise ValueError(f"Object {name} not found")
 
-    def add_initial_value(self, initial_value: str) -> None:
-        values = initial_value.strip("() ").split(" ")
-        val = self.expression_manager.TRUE()
-        if values[0] == "not":
-            val = self.expression_manager.FALSE()
-            values = [v.strip("() ") for v in values[1:]]
+    def add_initial_value(self, stmt: str) -> None:
+        stmts = CustomReplanner.parse_statement(stmt)
 
-        fluent = self.get_fluent(values[0])
+        value = self.expression_manager.TRUE()
+        if stmts[0] == "not":
+            value = self.expression_manager.FALSE()
+            stmts = stmts[1:]
+
+        if len(stmts) == 0:
+            raise ValueError("Invalid initial value")
+        elif len(stmts) > 1:
+            raise ValueError("Only single fluents are supported in initial values")
+
+        initial_value_parts = stmts[0].split(" ")
+
+        fluent = self.get_fluent(initial_value_parts[0])
         expr = self.expression_manager.FluentExp(
-            fluent, tuple([self.get_object(arg) for arg in values[1:]])
+            fluent, tuple([self.get_object(arg) for arg in initial_value_parts[1:]])
         )
-        self.problem.set_initial_value(expr, val)
+        self.problem.set_initial_value(expr, value)
 
-    def remove_initial_value(self, initial_value: str) -> None:
-        values = initial_value.strip("() ").split(" ")
-        if values[0] == "not":
-            values = [v.strip("() ") for v in values[1:]]
+    def remove_initial_value(self, stmt: str) -> None:
+        stmts = CustomReplanner.parse_statement(stmt)
 
-        fluent = self.get_fluent(values[0])
-        conained_names_set = set(values)
+        if stmts[0] == "not":
+            stmts = stmts[1:]
+
+        if len(stmts) == 0:
+            raise ValueError("Invalid initial value")
+        elif len(stmts) > 1:
+            raise ValueError("Only single fluents are supported in initial values")
+
+        initial_value_parts = stmts[0].split(" ")
+
+        fluent = self.get_fluent(initial_value_parts[0])
+        conained_names_set = set(initial_value_parts)
         try:
-            initial_value = next(
+            stmt = next(
                 v
                 for v in self.problem.initial_values.keys()
                 if v.fluent() == fluent
                 and conained_names_set == v.get_contained_names()
             )
         except StopIteration:
-            raise ValueError(f"Initial value {initial_value} not found")
-        del self.problem.initial_values[initial_value]
+            raise ValueError(f"Initial value {stmt} not found")
+        del self.problem.initial_values[stmt]
+
+    def update_goal(self, stmt: str) -> None:
+        self.problem.clear_goals()
+        stmts = CustomReplanner.parse_statement(stmt)
+
+        if stmts[0] == "and":
+            stmts = stmts[1:]
+
+        if len(stmts) == 0:
+            raise ValueError("Invalid goal")
+
+        expected_values = []
+        for stmt in stmts:
+            expected_value_parts = stmt.split(" ")
+            fluent = self.get_fluent(expected_value_parts[0])
+            expr = self.expression_manager.FluentExp(
+                fluent,
+                tuple([self.get_object(arg) for arg in expected_value_parts[1:]]),
+            )
+            expected_values.append(expr)
+        if len(expected_values) == 1:
+            self.problem.add_goal(expected_values[0])
+        else:
+            self.problem.add_goal(self.expression_manager.And(expected_values))
+
+    @staticmethod
+    def parse_statement(stmt: str) -> list[str]:
+        """Parses a statement into its components, support conjunctions (and)."""
+        stmt = stmt.replace("\n", " ").strip()
+        while "  " in stmt:
+            stmt = stmt.replace("  ", " ")
+        if stmt.startswith("(") and stmt.endswith(")"):
+            stmt = stmt[1:-1].strip()
+        stmts = []
+        depth = 0
+        current_stmt = ""
+        for i, char in enumerate(stmt):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            if char == " " and depth == 0 and stmt[i + 1] == "(":
+                if current_stmt:
+                    stmts.append(current_stmt.strip("() "))
+                    current_stmt = ""
+            else:
+                current_stmt += char
+        if current_stmt:
+            stmts.append(current_stmt.strip("() "))
+
+        if len(stmts) == 0:
+            raise ValueError("Invalid initial value")
+        return stmts
 
 
 @app.route("/solve", methods=["POST"])
@@ -115,10 +183,6 @@ def solve_route():
 
     if "goal" not in differences:
         return jsonify({"status": "error", "msg": "No goal provided"}), 400
-    elif "add" not in differences["goal"]:
-        return jsonify({"status": "error", "msg": "No goal to add provided"}), 400
-    elif "remove" not in differences["goal"]:
-        return jsonify({"status": "error", "msg": "No goal to remove provided"}), 400
 
     time_limit = request.json.get("time_limit", 1000)
     try:
@@ -138,6 +202,9 @@ def solve_route():
             replanner.remove_initial_value(initial_value.strip("()").strip())
         except Exception as e:
             return jsonify({"status": "error", "msg": str(e)}), 400
+
+    if differences["goal"] is not None:
+        replanner.update_goal(differences["goal"])
 
     plan = replanner.resolve(timeout=time_limit)
 
@@ -165,7 +232,8 @@ def define_problem():
         return jsonify({"status": "error", "msg": "No problem provided"}), 400
 
     try:
-        id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
+        # id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
+        id = "95KXRNMQ68ZF"  # FIXME: testing purposes
         problem = PDDLReader().parse_problem_string(domain, pddl_problem_str)
         REPLANNERS[id] = CustomReplanner(problem)
         return jsonify({"status": "success", "id": id}), 201

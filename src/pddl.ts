@@ -12,7 +12,7 @@ export class PddlPlanner {
   private staticInit: string[] = [];
   private dynamicObjects: string[] = [];
   private dynamicInit: string[] = [];
-  private goal: string[] = [];
+  private goal: string = "";
   private id: string | null = null;
 
   constructor(agentId: string, belifsSet: BelifsSet) {
@@ -76,7 +76,7 @@ export class PddlPlanner {
     return [objects, init];
   }
 
-  private getDynamicObjectsAndInitAndGoal(): [string[], string[], string[]] {
+  private getDynamicObjectsAndInitAndGoal(): [string[], string[], string] {
     const parcels = this.belifsSet.getParcels();
     const agents = this.belifsSet
       .getAgents()
@@ -117,8 +117,14 @@ export class PddlPlanner {
     }
 
     debug("PddlProblem generated", this.agentId);
+    let goalStr =
+      this.goal.length > 1 ? "\n        (and\n        " : "\n        ";
+    goalStr += goal.join("\n        ");
+    if (goal.length > 1) {
+      goalStr += "\n        )";
+    }
 
-    return [objects, init, goal];
+    return [objects, init, goalStr];
   }
 
   private async getPddlSolution(): Promise<string[] | null> {
@@ -133,10 +139,7 @@ export class PddlPlanner {
       add: [],
       remove: [],
     };
-    const goalDiff: { add: string[]; remove: string[] } = {
-      add: [],
-      remove: [],
-    };
+    let goalDiff: string | null = null;
 
     if (this.id === null) {
       let pddlDomain = "";
@@ -155,13 +158,6 @@ export class PddlPlanner {
       const objects = [...this.static_objects, ...dynamicObjects];
       const init = [...this.staticInit, ...dynamicInit];
 
-      let goalStr =
-        this.goal.length > 1 ? "\n        (and\n        " : "\n        ";
-      goalStr += this.goal.join("\n        ");
-      if (goal.length > 1) {
-        goalStr += "\n        )";
-      }
-
       const pddlProblem = `(define (problem deliveroo)
           (:domain deliveroo)
           (:objects
@@ -170,7 +166,7 @@ export class PddlPlanner {
           (:init
         ${init.join("\n        ")}
           )
-          (:goal ${goalStr}
+          (:goal ${this.goal}
           )
           (:metric minimize (total-cost)
           )
@@ -217,8 +213,9 @@ export class PddlPlanner {
         (init) => !dynamicInit.includes(init),
       );
 
-      goalDiff.add = goal.filter((g) => !this.goal.includes(g));
-      goalDiff.remove = this.goal.filter((g) => !goal.includes(g));
+      if (goal !== this.goal) {
+        goalDiff = goal;
+      }
 
       this.dynamicObjects = dynamicObjects;
       this.dynamicInit = dynamicInit;
@@ -268,7 +265,8 @@ export class PddlPlanner {
           }),
         });
         this.id = null;
-        process.exit(1);
+        error("PDDL problem deleted due to error", this.agentId);
+        process.exit(1); // TODO: handle this better
       });
   }
 
