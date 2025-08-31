@@ -222,9 +222,7 @@ export class BelifsSet {
       lessSeenedSpawnable.checkedCount += 1;
       const pathToSpawnable = this.dijsktra(this.pos, lessSeenedSpawnable.pos);
       if (pathToSpawnable && pathToSpawnable.length > 0) {
-        console.log(this.pos);
         for (const intent of pathToSpawnable) {
-          console.log(Intent[intent]);
           queue.push(intent);
         }
       } else {

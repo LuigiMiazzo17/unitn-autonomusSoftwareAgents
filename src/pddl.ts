@@ -1,9 +1,11 @@
+import config from "config";
+import fs from "fs";
+import path from "path";
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
-import config from "config";
 import { Intent } from "src/itents";
 import { debug, error, info } from "src/utils/log";
-import fs from "fs";
+import { fileURLToPath } from "url";
 
 export class PddlPlanner {
   private agentId: string;
@@ -144,7 +146,11 @@ export class PddlPlanner {
     if (this.id === null) {
       let pddlDomain = "";
       try {
-        pddlDomain = await fs.promises.readFile("./domain.pddl", "utf-8");
+        const pddlDomainFilePath = path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "domain.pddl",
+        );
+        pddlDomain = await fs.promises.readFile(pddlDomainFilePath, "utf-8");
       } catch (err) {
         error(`Error reading PDDL domain file: ${err || "Unknown error"}`);
         throw err;
