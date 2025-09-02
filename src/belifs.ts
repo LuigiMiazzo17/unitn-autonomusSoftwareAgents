@@ -509,21 +509,23 @@ export class BelifsSet {
       pos: Position;
       carrying: Set<string>;
       toPickup: DeliverooParcelType[];
+      tilesWithParcels: number;
       plan: Intent[];
-      distance: number;
+      cost: number;
     };
 
     const initialStep: Step = {
       pos: this.pos,
       carrying: new Set(this.carryingParcels),
       toPickup: parcelsToPickup,
+      tilesWithParcels: parcelsToPickup.length,
       plan: [],
-      distance: 0,
+      cost: 0,
     };
 
     const queue: Step[] = [initialStep];
     let bestPlan: Intent[] | null = null;
-    let bestDistance = Infinity;
+    let bestCost = Infinity;
     let arrangementsTried = 0;
 
     debug(`Parcels known: ${parcelsToPickup.length}`, this.id);
@@ -536,8 +538,8 @@ export class BelifsSet {
 
       // if we have a better plan, update it
       if (current.toPickup.length === 0 && current.carrying.size === 0) {
-        if (current.distance < bestDistance) {
-          bestDistance = current.distance;
+        if (current.cost < bestCost) {
+          bestCost = current.cost;
           bestPlan = current.plan;
         }
         continue;
@@ -577,8 +579,10 @@ export class BelifsSet {
             pos: { x: parcel.x, y: parcel.y },
             carrying: newCarrying,
             toPickup: current.toPickup.filter((_, idx) => idx !== i),
+            tilesWithParcels:
+              current.tilesWithParcels + pathToParcel.length * newCarrying.size,
             plan: current.plan.concat(pathToParcel, [Intent.PICKUP]),
-            distance: current.distance + pathToParcel.length + 1,
+            cost: current.cost,
           });
         } else {
           error(
@@ -607,8 +611,10 @@ export class BelifsSet {
               pos: { x: closestDeliveryTile.x, y: closestDeliveryTile.y },
               carrying: new Set<string>(),
               toPickup: current.toPickup.slice(0),
+              tilesWithParcels: 0,
               plan: current.plan.concat(pathToDelivery, [Intent.DELIVER]),
-              distance: current.distance + pathToDelivery.length + 1,
+              cost:
+                current.cost + pathToDelivery.length * current.tilesWithParcels,
             });
             break;
           } else {
@@ -621,7 +627,7 @@ export class BelifsSet {
       }
     }
     info(
-      `Tried ${arrangementsTried} arrangements to find the best plan with distance ${bestDistance}`,
+      `Tried ${arrangementsTried} arrangements to find the best plan with distance ${bestCost}`,
       this.id,
     );
 

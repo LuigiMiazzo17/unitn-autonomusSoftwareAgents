@@ -55,7 +55,7 @@ export default class Agent {
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
     const somethingChanged = this.belifs.updateParcels(parcels);
-    if (somethingChanged && config.planner !== "pddl") {
+    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Intent>();
     }
@@ -274,7 +274,7 @@ export default class Agent {
       debug("Set HUNTING mode", this.id);
     } else {
       this.currentOperationMode = CurrentOperationMode.PLANNER;
-      debug("Set PDDL mode", this.id);
+      debug("Set Planner mode", this.id);
     }
 
     switch (this.currentOperationMode) {
@@ -283,14 +283,14 @@ export default class Agent {
         return this.belifs.getHuntingMovePlan();
       }
       case CurrentOperationMode.PLANNER: {
-        debug(`Planning in Planner mode`, this.id);
+        info(`Planning in Planner mode`, this.id);
         const plan =
           config.planner === "pddl"
             ? await this.pddlPlanner.solvePddlProblem()
             : this.belifs.getSmartPlan();
 
         if (plan === null) {
-          warn(`PDDL planning failed, switching to EXPLORING mode`, this.id);
+          warn(`Planner planning failed, switching to EXPLORING mode`, this.id);
           this.currentOperationMode = CurrentOperationMode.HUNTING;
           return this.belifs.getHuntingMovePlan();
         } else {
