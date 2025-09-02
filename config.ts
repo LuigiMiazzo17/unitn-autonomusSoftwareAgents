@@ -18,4 +18,8 @@ export default {
   maxMoveFailCount: 3,
   solverUrl,
   planner: (process.env.PLANNER as PlannerType) || "pddl",
+  pickupBranchingFactor: parseInt(
+    process.env.PICKUP_BRANCHING_FACTOR || "3",
+    10,
+  ),
 };
