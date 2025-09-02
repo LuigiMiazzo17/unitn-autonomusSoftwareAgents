@@ -36,6 +36,7 @@ export class BelifsSet {
   private carryingParcels: Set<string> = new Set<string>();
   private spawnableTiles: SpawnableTiles[];
   private sortedClosestDeliveryTileCache: { [key: string]: Position[] } = {};
+  private knownGroupAgents: Set<string> = new Set<string>();
 
   constructor(
     id: string,
@@ -100,6 +101,14 @@ export class BelifsSet {
     debug(`Belifs checksum: ${checksum}`, this.id);
 
     return checksum;
+  }
+
+  getKnwonAgentsIds(): Set<string> {
+    return this.knownGroupAgents;
+  }
+
+  addKnownGroupAgent(agentId: string): void {
+    this.knownGroupAgents.add(agentId);
   }
 
   updateParcels(parcels: DeliverooParcelType[]): boolean {
