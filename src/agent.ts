@@ -57,7 +57,7 @@ export default class Agent {
     const somethingChanged = this.belifs.updateParcels(parcels);
     if (somethingChanged && config.planner !== "pddl") {
       info(`Parcels changed, dropping plan`, this.id);
-      // this.plan = new Queue<Intent>();
+      this.plan = new Queue<Intent>();
     }
   };
 

@@ -22,4 +22,6 @@ export default {
     process.env.PICKUP_BRANCHING_FACTOR || "3",
     10,
   ),
+  recalculatePlanOnParcelUpdate:
+    process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true" || true,
 };
