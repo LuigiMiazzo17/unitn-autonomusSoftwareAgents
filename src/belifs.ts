@@ -3,10 +3,11 @@ import {
   Parcel as DeliverooParcelType,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
+import config from "config";
 import crypto from "crypto";
 import { Queue } from "queue-typed";
-import { debug, error } from "src/utils/log";
 import { Intent, CurrentOperationMode } from "./itents";
+import { debug, info, error } from "src/utils/log";
 
 export enum TileType {
   WALL,
@@ -29,10 +30,13 @@ export class BelifsSet {
   private id: string;
   private pos: Position;
   private map: TileType[][];
+  private deliveryTiles: Position[] = [];
   private parcels: DeliverooParcelType[] = [];
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
   private spawnableTiles: SpawnableTiles[];
+  private sortedClosestDeliveryTileCache: { [key: string]: Position[] } = {};
+  private knownGroupAgents: Set<string> = new Set<string>();
 
   constructor(
     id: string,
@@ -41,6 +45,16 @@ export class BelifsSet {
   ) {
     this.id = id;
     this.map = BelifsSet.convertMap(map);
+
+    // precalculate deplivery tiles
+    this.deliveryTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => pos as Position),
+      )
+      .flat();
     this.pos = pos;
     this.spawnableTiles = this.map
       .map((row, y) =>
@@ -92,13 +106,32 @@ export class BelifsSet {
       .digest("hex");
   }
 
-  updateParcels(parcels: DeliverooParcelType[]): void {
+  getKnwonAgentsIds(): Set<string> {
+    return this.knownGroupAgents;
+  }
+
+  addKnownGroupAgent(agentId: string): void {
+    this.knownGroupAgents.add(agentId);
+  }
+
+  updateParcels(parcels: DeliverooParcelType[]): boolean {
+    let somethingChanged = false;
     for (const parcel of parcels) {
       const index = this.parcels.findIndex((p) => p.id === parcel.id);
       if (index !== -1) {
         this.parcels[index] = parcel;
+        if (parcel.carriedBy && !this.carryingParcels.has(parcel.id)) {
+          this.carryingParcels.add(parcel.id);
+          debug(
+            `Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`,
+            this.id,
+          );
+          somethingChanged = true;
+        }
       } else {
         this.parcels.push(parcel);
+        debug(`Discovered new parcel ${parcel.id}`, this.id);
+        somethingChanged = true;
       }
     }
 
@@ -107,10 +140,12 @@ export class BelifsSet {
       if (!parcelIds.includes(parcelId)) {
         this.carryingParcels.delete(parcelId);
         debug(`Parcel ${parcelId} dropped`, this.id);
+        somethingChanged = true;
       }
     }
 
     debug(`Updated parcels: ${this.parcels.length}`, this.id);
+    return somethingChanged;
   }
 
   getParcels(): DeliverooParcelType[] {
@@ -200,7 +235,7 @@ export class BelifsSet {
     return false;
   }
 
-  getSmartMovePlan(): Queue<Intent> {
+  getHuntingMovePlan(): Queue<Intent> {
     const queue = new Queue<Intent>();
 
     if (this.isPickupAvailable()) {
@@ -279,7 +314,7 @@ export class BelifsSet {
     return queue;
   }
 
-  dijsktra(start: Position, goal: Position): Intent[] | null {
+  distance_vector(start: Position): [number[][], Position[][]] {
     const directions: {
       [key: string]: { dx: number; dy: number; intent: Intent };
     } = {
@@ -311,8 +346,6 @@ export class BelifsSet {
       if (visited[y][x]) continue;
       visited[y][x] = true;
 
-      if (x === goal.x && y === goal.y) break;
-
       for (const dir in directions) {
         const { dx, dy } = directions[dir];
         const nx = x + dx;
@@ -342,7 +375,16 @@ export class BelifsSet {
       }
     }
 
-    if (distances[goal.y][goal.x] === Infinity) {
+    return [distances, previous];
+  }
+
+  getPathFromDistances(
+    distances: number[][],
+    previous: (Position | null)[][],
+    goal: Position,
+  ): Intent[] | null {
+    if (distances === undefined || distances[goal.y][goal.x] === Infinity) {
+      error(`No path found to goal at (${goal.x}, ${goal.y})`, this.id);
       return null;
     }
 
@@ -374,6 +416,11 @@ export class BelifsSet {
     return intents;
   }
 
+  dijsktra(start: Position, goal: Position): Intent[] | null {
+    const [distances, previous] = this.distance_vector(start);
+    return this.getPathFromDistances(distances, previous, goal);
+  }
+
   static convertMap(m: {
     width: number;
     height: number;
@@ -398,5 +445,213 @@ export class BelifsSet {
     }
 
     return map;
+  }
+
+  getOrCacheDistanceVectorAndPrevious(
+    cache: { [key: string]: [number[][], Position[][]] },
+    pos: Position,
+  ): [number[][], (Position | null)[][]] {
+    const key = `${pos.x},${pos.y}`;
+    if (cache[key]) {
+      debug(`Using cached distance vector for ${key}`, this.id);
+      return [cache[key][0], cache[key][1]];
+    }
+
+    debug(`Calculating distance vector from scratch for ${key}`, this.id);
+
+    const [distances, previous] = this.distance_vector(pos);
+    cache[key] = [distances, previous];
+    return [distances, previous];
+  }
+
+  getSortedClosestDeliveryTileFromCache(
+    cache: { [key: string]: [number[][], Position[][]] },
+    pos: Position,
+  ): Position[] {
+    const key = `${pos.x},${pos.y}`;
+    if (this.sortedClosestDeliveryTileCache[key]) {
+      debug(`Using cached sorted closest delivery tiles for ${key}`, this.id);
+      return this.sortedClosestDeliveryTileCache[key];
+    }
+
+    debug(
+      `Calculating sorted closest delivery tiles from scratch for ${key}`,
+      this.id,
+    );
+
+    if (this.deliveryTiles.length === 0) {
+      throw new Error("No delivery tiles found on the map");
+    }
+
+    const distances = this.getOrCacheDistanceVectorAndPrevious(cache, pos)[0];
+
+    const deliveryPositions: Position[] = [];
+    for (let y = 0; y < this.map.length; y++) {
+      for (let x = 0; x < this.map[0].length; x++) {
+        if (this.map[y][x] === TileType.DELIVERY) {
+          deliveryPositions.push({ x, y });
+        }
+      }
+    }
+
+    const deliveryTilesWithDistance = deliveryPositions.map((tile) => ({
+      tile,
+      distance: distances[tile.y][tile.x],
+    }));
+
+    deliveryTilesWithDistance.sort((a, b) => a.distance - b.distance);
+
+    const sortedTiles = deliveryTilesWithDistance.map((d) => d.tile);
+    this.sortedClosestDeliveryTileCache[key] = sortedTiles;
+    return sortedTiles;
+  }
+
+  getSmartPlan(): Queue<Intent> | null {
+    const distanceVectorCache: {
+      [key: string]: [number[][], Position[][]];
+    } = {};
+
+    const parcelsToPickup = this.parcels.filter((p) => !p.carriedBy);
+
+    if (parcelsToPickup.length === 0 && this.carryingParcels.size === 0) {
+      return null;
+    }
+
+    type Step = {
+      pos: Position;
+      carrying: Set<string>;
+      toPickup: DeliverooParcelType[];
+      tilesWithParcels: number;
+      plan: Intent[];
+      cost: number;
+    };
+
+    const initialStep: Step = {
+      pos: this.pos,
+      carrying: new Set(this.carryingParcels),
+      toPickup: parcelsToPickup,
+      tilesWithParcels: parcelsToPickup.length,
+      plan: [],
+      cost: 0,
+    };
+
+    const queue: Step[] = [initialStep];
+    let bestPlan: Intent[] | null = null;
+    let bestCost = Infinity;
+    let arrangementsTried = 0;
+
+    debug(`Parcels known: ${parcelsToPickup.length}`, this.id);
+    debug(`Delivery tiles known: ${this.deliveryTiles.length}`, this.id);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      arrangementsTried += 1;
+      if (!current) break;
+
+      // if we have a better plan, update it
+      if (current.toPickup.length === 0 && current.carrying.size === 0) {
+        if (current.cost < bestCost) {
+          bestCost = current.cost;
+          bestPlan = current.plan;
+        }
+        continue;
+      }
+
+      const [distances, previous] = this.getOrCacheDistanceVectorAndPrevious(
+        distanceVectorCache,
+        current.pos,
+      );
+
+      // choose the closes legal parcel to pickup, use geometric distance to sort them
+      current.toPickup.sort((a, b) => {
+        const distA =
+          Math.abs(a.x - current.pos.x) + Math.abs(a.y - current.pos.y);
+        const distB =
+          Math.abs(b.x - current.pos.x) + Math.abs(b.y - current.pos.y);
+        return distA - distB;
+      });
+
+      // try to pickup up to 3 parcels (to limit branching factor)
+      const toPickupCount = Math.min(
+        current.toPickup.length,
+        config.pickupBranchingFactor,
+      );
+      for (let i = 0; i < toPickupCount; i++) {
+        // try to pickup each parcel
+        const parcel = current.toPickup[i];
+        const pathToParcel = this.getPathFromDistances(distances, previous, {
+          x: parcel.x,
+          y: parcel.y,
+        });
+
+        if (pathToParcel !== null) {
+          const newCarrying = new Set(current.carrying);
+          newCarrying.add(parcel.id);
+          queue.push({
+            pos: { x: parcel.x, y: parcel.y },
+            carrying: newCarrying,
+            toPickup: current.toPickup.filter((_, idx) => idx !== i),
+            tilesWithParcels:
+              current.tilesWithParcels + pathToParcel.length * newCarrying.size,
+            plan: current.plan.concat(pathToParcel, [Intent.PICKUP]),
+            cost: current.cost,
+          });
+        } else {
+          error(
+            `No path found to parcel ${parcel.id} at (${parcel.x}, ${parcel.y})`,
+            this.id,
+          );
+        }
+      }
+
+      // try to deliver each carrying parcel
+      if (current.carrying.size !== 0) {
+        const sortedDeliveryTiles = this.getSortedClosestDeliveryTileFromCache(
+          distanceVectorCache,
+          current.pos,
+        );
+
+        while (sortedDeliveryTiles.length > 0) {
+          const closestDeliveryTile = sortedDeliveryTiles.shift()!;
+          const pathToDelivery = this.getPathFromDistances(
+            distances,
+            previous,
+            closestDeliveryTile,
+          );
+          if (pathToDelivery !== null) {
+            queue.push({
+              pos: { x: closestDeliveryTile.x, y: closestDeliveryTile.y },
+              carrying: new Set<string>(),
+              toPickup: current.toPickup.slice(0),
+              tilesWithParcels: 0,
+              plan: current.plan.concat(pathToDelivery, [Intent.DELIVER]),
+              cost:
+                current.cost + pathToDelivery.length * current.tilesWithParcels,
+            });
+            break;
+          } else {
+            error(
+              `No path found to delivery tile at (${closestDeliveryTile.x}, ${closestDeliveryTile.y})`,
+              this.id,
+            );
+          }
+        }
+      }
+    }
+    info(
+      `Tried ${arrangementsTried} arrangements to find the best plan with distance ${bestCost}`,
+      this.id,
+    );
+
+    if (bestPlan) {
+      const intentQueue = new Queue<Intent>();
+      for (const intent of bestPlan) {
+        intentQueue.push(intent);
+      }
+      return intentQueue;
+    }
+
+    error("No plan found with custom resolver", this.id);
+    return null;
   }
 }

@@ -18,6 +18,12 @@ export type AgentOptions = {
   token?: string | null;
 };
 
+type Message = {
+  type: "handshake" | "handshake-ack" | "parcels";
+  agentType: "svejaMacachi" | unknown;
+  [key: string]: unknown;
+};
+
 export default class Agent {
   private apiConnection: DeliverooApi;
   private frame: number = 0;
@@ -41,8 +47,34 @@ export default class Agent {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onMsg: (msg: any) => void = (msg) => {
+  onMsg: (senderId: string, _: unknown, msg: any) => void = (
+    senderId,
+    _,
+    msg,
+  ) => {
     info(`Received message: ${JSON.stringify(msg)}`, this.id);
+
+    if (!msg.agentType || msg.agentType !== "svejaMacachi") {
+      warn(`Ignoring message from unknown agent type`, this.id);
+    }
+
+    switch (msg.type) {
+      case "handshake": {
+        info(`Handshake received from agent ${senderId}`, this.id);
+        this.apiConnection.emitSay(senderId, {
+          type: "handshake-ack",
+          agentType: "svejaMacachi",
+        } as Message);
+        info(`Adding known agent ${senderId}`, this.id);
+        this.belifs.addKnownGroupAgent(senderId);
+        break;
+      }
+      case "handshake-ack": {
+        info(`Adding known agent ${senderId}`, this.id);
+        this.belifs.addKnownGroupAgent(senderId);
+        break;
+      }
+    }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,12 +87,26 @@ export default class Agent {
 
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    this.belifs.updateParcels(parcels);
+    const somethingChanged = this.belifs.updateParcels(parcels);
+    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+      info(`Parcels changed, dropping plan`, this.id);
+      this.plan = new Queue<Intent>();
+    }
   };
 
   onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
+    const newAgents = agents.filter(
+      (a) => a.id !== this.id && !this.belifs.getKnwonAgentsIds().has(a.id),
+    );
     this.belifs.updateAgents(agents);
+    for (const agent of newAgents) {
+      info(`Sending handshake to agent ${agent.id}`, this.id);
+      this.apiConnection.emitSay(agent.id, {
+        type: "handshake",
+        agentType: "svejaMacachi",
+      } as Message);
+    }
   };
 
   onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
@@ -204,7 +250,7 @@ export default class Agent {
   }
 
   async executeIntent(intent: Intent): Promise<boolean> {
-    info(`Executing intent: ${Intent[intent]}`, this.id);
+    debug(`Executing intent: ${Intent[intent]}`, this.id);
 
     const pos = this.belifs.getPos();
 
@@ -282,25 +328,28 @@ export default class Agent {
       this.currentOperationMode = CurrentOperationMode.HUNTING;
       debug("Set HUNTING mode", this.id);
     } else {
-      this.currentOperationMode = CurrentOperationMode.PDDL;
-      debug("Set PDDL mode", this.id);
+      this.currentOperationMode = CurrentOperationMode.PLANNER;
+      debug("Set Planner mode", this.id);
     }
 
     switch (this.currentOperationMode) {
       case CurrentOperationMode.HUNTING: {
         info(`Planning in HUNTING mode`, this.id);
-        return this.belifs.getSmartMovePlan();
+        return this.belifs.getHuntingMovePlan();
       }
-      case CurrentOperationMode.PDDL: {
-        debug(`Planning in PDDL mode`, this.id);
-        const pddlPlan = await this.pddlPlanner.solvePddlProblem();
+      case CurrentOperationMode.PLANNER: {
+        info(`Planning in Planner mode`, this.id);
+        const plan =
+          config.planner === "pddl"
+            ? await this.pddlPlanner.solvePddlProblem()
+            : this.belifs.getSmartPlan();
 
-        if (pddlPlan === null) {
-          warn(`PDDL planning failed, switching to EXPLORING mode`, this.id);
+        if (plan === null) {
+          warn(`Planner planning failed, switching to EXPLORING mode`, this.id);
           this.currentOperationMode = CurrentOperationMode.HUNTING;
-          return this.belifs.getSmartMovePlan();
+          return this.belifs.getHuntingMovePlan();
         } else {
-          return pddlPlan;
+          return plan;
         }
       }
       default: {
