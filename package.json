@@ -24,8 +24,9 @@
     "clean": "rm -rf dist",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "build": "npm run lint && npm run clean && esbuild app.ts --tsconfig=tsconfig.json --bundle --outdir=dist --platform=node --format=esm --external:@unitn-asa/deliveroo-js-client --external:@unitn-asa/pddl-client && cp ./pddl/domain.pddl ./dist ",
-    "start": "npm run build && node --env-file-if-exists=.env dist/app.js"
+    "build": "npm run lint && npm run clean && esbuild app.ts scripts/bench.ts --tsconfig=tsconfig.json --bundle --outdir=dist --platform=node --format=esm --external:@unitn-asa/deliveroo-js-client --external:@unitn-asa/pddl-client",
+    "start": "npm run build && node --env-file-if-exists=.env dist/app.js",
+    "bench": "npm run build && node --env-file-if-exists=.env dist/scripts/bench.js"
   },
   "dependencies": {
     "@unitn-asa/deliveroo-js-client": "^2.0.3",
