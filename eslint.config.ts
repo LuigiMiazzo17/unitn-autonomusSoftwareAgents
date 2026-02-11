@@ -13,9 +13,9 @@ export default defineConfig([
   globalIgnores([
     "**/dist/**",
     "**/node_modules/**",
-    "**/tests/**",
     "**/types/**",
     "**/pddl/**",
+    "Deliveroo.js/**",
   ]),
   tseslint.configs.recommended,
 ]);

@@ -1,4 +1,3 @@
-[submodule "tests/Deliveroo/Deliveroo.js"]
-	path = tests/Deliveroo/Deliveroo.js
+[submodule "Deliveroo.js"]
+	path = Deliveroo.js
 	url = https://github.com/unitn-ASA/Deliveroo.js
-	branch = master
