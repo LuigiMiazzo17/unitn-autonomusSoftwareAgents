@@ -1,27 +1,35 @@
 import LOG_LEVELS from "src/utils/log/levels";
 
-const logLevel = (process.env.LOG_LEVEL || "warn").toUpperCase();
-const solverUrl = process.env.SOLVER_URL;
-if (!solverUrl) {
-  throw new Error("SOLVER_URL is not defined");
-}
+export type PlannerType = "pddl" | "custom";
 
+const logLevel = (process.env.LOG_LEVEL || "warn").toUpperCase();
 if (!Object.keys(LOG_LEVELS).includes(logLevel)) {
   throw new Error(`Invalid log level: ${logLevel}`);
 }
 
-export type PlannerType = "pddl" | "custom";
+const planner = (process.env.PLANNER || "pddl").toLowerCase() as PlannerType;
+const solverUrl = process.env.SOLVER_URL;
+if (!solverUrl && planner === "pddl") {
+  throw new Error("SOLVER_URL is not defined");
+}
 
 export default {
   host: process.env.HOST || "http://localhost:8080",
   logLevel: LOG_LEVELS[logLevel as keyof typeof LOG_LEVELS],
   maxMoveFailCount: 3,
-  solverUrl,
-  planner: (process.env.PLANNER as PlannerType) || "pddl",
+  solverUrl: solverUrl || undefined,
+  planner: planner,
   pickupBranchingFactor: parseInt(
     process.env.PICKUP_BRANCHING_FACTOR || "3",
     10,
   ),
-  recalculatePlanOnParcelUpdate:
-    process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true" || true,
+  deliveryOverPickupRatio: parseFloat(
+    process.env.DELIVERY_OVER_PICKUP_RATIO || "1.5",
+  ),
+  avoidAgentsInPlanning: process.env.AVOID_AGENTS_IN_PLANNING
+    ? process.env.AVOID_AGENTS_IN_PLANNING === "true"
+    : true,
+  recalculatePlanOnParcelUpdate: process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE
+    ? process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true"
+    : true,
 };

@@ -9,5 +9,5 @@
     "outDir": "dist",
     "baseUrl": "."
   },
-  "include": ["app.ts", "config.ts", "src", "types"]
+  "include": ["app.ts", "config.ts", "src", "types", "scripts"]
 }
