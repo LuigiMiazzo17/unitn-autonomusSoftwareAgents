@@ -35,6 +35,8 @@ export default class Agent {
   private currentOperationMode: CurrentOperationMode =
     CurrentOperationMode.HUNTING;
   private moveFailCount: number = 0;
+  private currentScore: number = 0;
+  private stopped: boolean = false;
   private belifsChecksum: string = "";
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
@@ -127,10 +129,10 @@ export default class Agent {
     if (this.moveFailCount >= config.maxMoveFailCount) {
       agent.x = Math.floor(agent.x);
       agent.y = Math.floor(agent.y);
-      this.belifs.updatePos({ x: agent.x, y: agent.y });
+      this.belifs.updatePos({ x: Math.floor(agent.x), y: Math.floor(agent.y) });
       this.moveFailCount = 0;
       warn(
-        `Too many move failures, resetting position to (${agent.x}, ${agent.y})`,
+        `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
         this.id,
       );
       this.plan = new Queue<Intent>();
@@ -138,10 +140,11 @@ export default class Agent {
     }
 
     debug(
-      `You event: position (${agent.x}, ${agent.y}) at ${timestamp.ms}`,
+      `You event: position (${Math.floor(agent.x)}, ${Math.floor(agent.y)}) at ${timestamp.ms}`,
       this.id,
     );
 
+    this.currentScore = agent.score;
     this.lastTimestampUpdate = timestamp;
   };
 
@@ -161,7 +164,10 @@ export default class Agent {
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
     this.apiConnection.onYou(this.onYou);
 
-    this.belifs = new BelifsSet(me.id, map, { x: me.x, y: me.y });
+    this.belifs = new BelifsSet(me.id, map, {
+      x: Math.floor(me.x),
+      y: Math.floor(me.y),
+    });
     this.pddlPlanner = new PddlPlanner(me.id, this.belifs);
   }
 
@@ -175,7 +181,12 @@ export default class Agent {
     );
   }
 
-  async run(): Promise<never> {
+  async run(): Promise<void> {
+    await this.runFor(Infinity);
+  }
+
+  async runFor(durationMs: number): Promise<void> {
+    this.stopped = false;
     this.apiConnection.connect();
 
     info(
@@ -183,7 +194,9 @@ export default class Agent {
       this.id,
     );
 
-    while (true) {
+    const startTime = Date.now();
+
+    while (!this.stopped) {
       const start = Date.now();
       await this.frameAdvance();
 
@@ -193,7 +206,25 @@ export default class Agent {
           setTimeout(resolve, FRAME_ADVANCE_INTERVAL - elapsed),
         );
       }
+
+      if (Date.now() - startTime >= durationMs) {
+        break;
+      }
     }
+
+    this.apiConnection.disconnect();
+  }
+
+  stop(): void {
+    this.stopped = true;
+  }
+
+  getScore(): number {
+    return this.currentScore;
+  }
+
+  getFrame(): number {
+    return this.frame;
   }
 
   async frameAdvance(): Promise<void> {
@@ -315,6 +346,8 @@ export default class Agent {
     const result = await this.apiConnection.emitPutdown();
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
+      // Remove all parcels that we thought were deliverable, since they are not
+      this.belifs.clearParcels();
       return false;
     }
     for (const parcel of result) {
@@ -345,7 +378,7 @@ export default class Agent {
             : this.belifs.getSmartPlan();
 
         if (plan === null) {
-          warn(`Planner planning failed, switching to EXPLORING mode`, this.id);
+          warn(`Planner planning failed, switching to HUNTING mode`, this.id);
           this.currentOperationMode = CurrentOperationMode.HUNTING;
           return this.belifs.getHuntingMovePlan();
         } else {

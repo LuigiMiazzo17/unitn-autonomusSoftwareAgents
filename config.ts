@@ -31,9 +31,6 @@ export default {
   deliveryOverPickupRatio: parseFloat(
     process.env.DELIVERY_OVER_PICKUP_RATIO || "1.5",
   ),
-  avoidAgentsInPlanning: process.env.AVOID_AGENTS_IN_PLANNING
-    ? process.env.AVOID_AGENTS_IN_PLANNING === "true"
-    : true,
   recalculatePlanOnParcelUpdate: process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE
     ? process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true"
     : true,

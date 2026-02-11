@@ -6,6 +6,7 @@ import {
 import config from "config";
 import crypto from "crypto";
 import { Queue } from "queue-typed";
+import { PriorityQueue } from "priority-queue-typescript";
 import { Intent, CurrentOperationMode } from "./itents";
 import { debug, info, error } from "src/utils/log";
 
@@ -30,13 +31,17 @@ export class BelifsSet {
   private id: string;
   private pos: Position;
   private map: TileType[][];
+  private mapVersion: number = 0;
   private deliveryTiles: Position[] = [];
   private parcels: DeliverooParcelType[] = [];
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
   private spawnableTiles: SpawnableTiles[];
-  private sortedClosestDeliveryTileCache: { [key: string]: Position[] } = {};
   private knownGroupAgents: Set<string> = new Set<string>();
+
+  private normalizePos(pos: Position): Position {
+    return { x: Math.floor(pos.x), y: Math.floor(pos.y) };
+  }
 
   constructor(
     id: string,
@@ -55,7 +60,7 @@ export class BelifsSet {
           .map((pos) => pos as Position),
       )
       .flat();
-    this.pos = pos;
+    this.pos = this.normalizePos(pos);
     this.spawnableTiles = this.map
       .map((row, y) =>
         row
@@ -67,7 +72,7 @@ export class BelifsSet {
   }
 
   updatePos(pos: Position): void {
-    this.pos = pos;
+    this.pos = this.normalizePos(pos);
   }
 
   getPos(): Position {
@@ -76,12 +81,44 @@ export class BelifsSet {
 
   updateMap(width: number, height: number, tiles: Tile[]): void {
     this.map = BelifsSet.convertMap({ width, height, tiles });
+    this.mapVersion += 1;
     this.agents = [];
     this.parcels = [];
+    this.deliveryTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => pos as Position),
+      )
+      .flat();
+    this.spawnableTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
+      )
+      .flat() as SpawnableTiles[];
   }
 
   getMap(): TileType[][] {
     return this.map;
+  }
+
+  private hasValidMap(): boolean {
+    return this.map.length > 0 && this.map[0].length > 0;
+  }
+
+  private isInsideMap(pos: Position): boolean {
+    if (!this.hasValidMap()) return false;
+    const norm = this.normalizePos(pos);
+    return (
+      norm.x >= 0 &&
+      norm.x < this.map[0].length &&
+      norm.y >= 0 &&
+      norm.y < this.map.length
+    );
   }
 
   getChecksumOfBelifs(operationMode: CurrentOperationMode): string {
@@ -96,7 +133,7 @@ export class BelifsSet {
       .sort()
       .join("|");
     const agentsStr = this.agents
-      .map((a) => `${a.id}-${a.x}-${a.y}`)
+      .map((a) => `${a.id}-${Math.floor(a.x)}-${Math.floor(a.y)}`)
       .sort()
       .join("|");
 
@@ -191,6 +228,11 @@ export class BelifsSet {
     }
   }
 
+  clearParcels(): void {
+    this.carryingParcels.clear();
+    debug(`Cleared carrying parcels`, this.id);
+  }
+
   updateAgents(agents: DeliverooAgentType[]): void {
     for (const agent of agents) {
       const index = this.agents.findIndex((a) => a.id === agent.id);
@@ -229,6 +271,9 @@ export class BelifsSet {
   }
 
   isOnDeliveryTile(): boolean {
+    if (!this.isInsideMap(this.pos)) {
+      return false;
+    }
     if (this.map[this.pos.y][this.pos.x] === TileType.DELIVERY) {
       return true;
     }
@@ -237,6 +282,12 @@ export class BelifsSet {
 
   getHuntingMovePlan(): Queue<Intent> {
     const queue = new Queue<Intent>();
+
+    if (!this.hasValidMap()) {
+      error("Map not initialized, cannot plan", this.id);
+      queue.push(Intent.NOOP);
+      return queue;
+    }
 
     if (this.isPickupAvailable()) {
       queue.push(Intent.PICKUP);
@@ -248,8 +299,18 @@ export class BelifsSet {
       return queue;
     }
 
-    const lessSeenedSpawnableTiles = this.spawnableTiles.sort(
+    if (this.spawnableTiles.length === 0) {
+      error("No spawnable tiles found", this.id);
+      queue.push(Intent.NOOP);
+      return queue;
+    }
+
+    const sortedLessSeenedSpawnableTiles = this.spawnableTiles.sort(
       (a, b) => a.checkedCount - b.checkedCount,
+    );
+    const leastCheckedCount = sortedLessSeenedSpawnableTiles[0].checkedCount;
+    const lessSeenedSpawnableTiles = sortedLessSeenedSpawnableTiles.filter(
+      (t) => t.checkedCount === leastCheckedCount,
     );
     const lessSeenedSpawnable =
       lessSeenedSpawnableTiles[
@@ -268,53 +329,29 @@ export class BelifsSet {
           `No path found to spawnable tile at (${lessSeenedSpawnable.pos.x}, ${lessSeenedSpawnable.pos.y})`,
           this.id,
         );
-        return this.randomMove();
+        queue.push(Intent.NOOP);
       }
     } else {
-      throw new Error("No spawnable tiles found");
-    }
-
-    return queue;
-  }
-
-  randomMove(): Queue<Intent> {
-    const queue = new Queue<Intent>();
-    const legalMoves: Intent[] = [];
-    const directions = {
-      MOVE_UP: { x: 0, y: 1 },
-      MOVE_DOWN: { x: 0, y: -1 },
-      MOVE_LEFT: { x: -1, y: 0 },
-      MOVE_RIGHT: { x: 1, y: 0 },
-    };
-
-    for (const [intentStr, dir] of Object.entries(directions)) {
-      const newX = this.pos.x + dir.x;
-      const newY = this.pos.y + dir.y;
-
-      if (
-        newX >= 0 &&
-        newX < this.map[0].length &&
-        newY >= 0 &&
-        newY < this.map.length &&
-        this.map[newY][newX] !== TileType.WALL
-      ) {
-        legalMoves.push(Intent[intentStr as keyof typeof Intent]);
-      }
-    }
-
-    if (legalMoves.length === 0) {
-      error("No legal moves available, this agent is stuck!", this.id);
+      error("No spawnable tiles found", this.id);
       queue.push(Intent.NOOP);
-      return queue;
     }
-
-    const randomIndex = Math.floor(Math.random() * legalMoves.length);
-    queue.push(legalMoves[randomIndex]);
 
     return queue;
   }
 
   distance_vector(start: Position): [number[][], Position[][]] {
+    const startPos = this.normalizePos(start);
+    if (!this.hasValidMap()) {
+      error("Map not initialized, cannot compute distances", this.id);
+      return [[], []];
+    }
+    if (!this.isInsideMap(startPos)) {
+      error(
+        `Start position out of bounds: (${startPos.x}, ${startPos.y})`,
+        this.id,
+      );
+      return [[], []];
+    }
     const directions: {
       [key: string]: { dx: number; dy: number; intent: Intent };
     } = {
@@ -333,14 +370,19 @@ export class BelifsSet {
     const previous = Array.from({ length: rows }, () => Array(cols).fill(null));
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
 
-    distances[start.y][start.x] = 0;
+    distances[startPos.y][startPos.x] = 0;
 
-    const pq: { pos: Position; dist: number }[] = [];
-    pq.push({ pos: start, dist: 0 });
+    type PQEntry = { pos: Position; dist: number };
 
-    while (pq.length > 0) {
-      pq.sort((a, b) => a.dist - b.dist);
-      const current = pq.shift()!;
+    const pq = new PriorityQueue<PQEntry>(
+      this.getMap().length * this.getMap()[0].length,
+      (a: PQEntry, b: PQEntry) => a.dist - b.dist,
+    );
+
+    pq.add({ pos: start, dist: 0 });
+
+    while (!pq.empty()) {
+      const current = pq.poll()!;
       const { x, y } = current.pos;
 
       if (visited[y][x]) continue;
@@ -361,7 +403,7 @@ export class BelifsSet {
           if (
             this.agents
               .filter((a) => a.id !== this.id)
-              .some((a) => a.x === nx && a.y === ny)
+              .some((a) => Math.floor(a.x) === nx && Math.floor(a.y) === ny)
           ) {
             continue;
           }
@@ -369,7 +411,7 @@ export class BelifsSet {
           if (alt < distances[ny][nx]) {
             distances[ny][nx] = alt;
             previous[ny][nx] = { x, y };
-            pq.push({ pos: { x: nx, y: ny }, dist: alt });
+            pq.add({ pos: { x: nx, y: ny }, dist: alt });
           }
         }
       }
@@ -383,7 +425,19 @@ export class BelifsSet {
     previous: (Position | null)[][],
     goal: Position,
   ): Intent[] | null {
-    if (distances === undefined || distances[goal.y][goal.x] === Infinity) {
+    if (!this.hasValidMap()) {
+      error("Map not initialized, cannot compute path", this.id);
+      return null;
+    }
+    if (!distances || distances.length === 0 || distances[0].length === 0) {
+      error("Distances not computed, cannot compute path", this.id);
+      return null;
+    }
+    if (!this.isInsideMap(goal)) {
+      error(`Goal out of bounds: (${goal.x}, ${goal.y})`, this.id);
+      return null;
+    }
+    if (distances[goal.y][goal.x] === Infinity) {
       error(`No path found to goal at (${goal.x}, ${goal.y})`, this.id);
       return null;
     }
@@ -417,6 +471,13 @@ export class BelifsSet {
   }
 
   dijsktra(start: Position, goal: Position): Intent[] | null {
+    if (!this.isInsideMap(start) || !this.isInsideMap(goal)) {
+      error(
+        `Dijkstra positions out of bounds: (${start.x}, ${start.y}) -> (${goal.x}, ${goal.y})`,
+        this.id,
+      );
+      return null;
+    }
     const [distances, previous] = this.distance_vector(start);
     return this.getPathFromDistances(distances, previous, goal);
   }
@@ -447,43 +508,33 @@ export class BelifsSet {
     return map;
   }
 
-  getOrCacheDistanceVectorAndPrevious(
-    cache: { [key: string]: [number[][], Position[][]] },
+  getDistanceVectorAndPrevious(
     pos: Position,
   ): [number[][], (Position | null)[][]] {
-    const key = `${pos.x},${pos.y}`;
-    if (cache[key]) {
-      debug(`Using cached distance vector for ${key}`, this.id);
-      return [cache[key][0], cache[key][1]];
+    if (!this.isInsideMap(pos)) {
+      error(`Position out of bounds: (${pos.x}, ${pos.y})`, this.id);
+      return [[], []];
     }
 
-    debug(`Calculating distance vector from scratch for ${key}`, this.id);
-
     const [distances, previous] = this.distance_vector(pos);
-    cache[key] = [distances, previous];
     return [distances, previous];
   }
 
-  getSortedClosestDeliveryTileFromCache(
-    cache: { [key: string]: [number[][], Position[][]] },
-    pos: Position,
-  ): Position[] {
-    const key = `${pos.x},${pos.y}`;
-    if (this.sortedClosestDeliveryTileCache[key]) {
-      debug(`Using cached sorted closest delivery tiles for ${key}`, this.id);
-      return this.sortedClosestDeliveryTileCache[key];
+  getSortedClosestDeliveryTile(pos: Position): Position[] {
+    if (!this.hasValidMap()) {
+      error("Map not initialized, cannot compute delivery tiles", this.id);
+      return [];
+    }
+    if (!this.isInsideMap(pos)) {
+      error(`Position out of bounds: (${pos.x}, ${pos.y})`, this.id);
+      return [];
     }
 
-    debug(
-      `Calculating sorted closest delivery tiles from scratch for ${key}`,
-      this.id,
-    );
-
-    if (this.deliveryTiles.length === 0) {
-      throw new Error("No delivery tiles found on the map");
+    const distances = this.getDistanceVectorAndPrevious(pos)[0];
+    if (!distances || distances.length === 0 || distances[0].length === 0) {
+      error("Distances not computed, cannot sort delivery tiles", this.id);
+      return [];
     }
-
-    const distances = this.getOrCacheDistanceVectorAndPrevious(cache, pos)[0];
 
     const deliveryPositions: Position[] = [];
     for (let y = 0; y < this.map.length; y++) {
@@ -502,19 +553,91 @@ export class BelifsSet {
     deliveryTilesWithDistance.sort((a, b) => a.distance - b.distance);
 
     const sortedTiles = deliveryTilesWithDistance.map((d) => d.tile);
-    this.sortedClosestDeliveryTileCache[key] = sortedTiles;
     return sortedTiles;
   }
 
   getSmartPlan(): Queue<Intent> | null {
-    const distanceVectorCache: {
-      [key: string]: [number[][], Position[][]];
-    } = {};
+    if (!this.hasValidMap()) {
+      error("Map not initialized, cannot plan", this.id);
+      return null;
+    }
+    if (!this.isInsideMap(this.pos)) {
+      error(`Position out of bounds: (${this.pos.x}, ${this.pos.y})`, this.id);
+      return null;
+    }
 
-    const parcelsToPickup = this.parcels.filter((p) => !p.carriedBy);
+    const parcelsToPickup = this.parcels.filter(
+      (p) => !p.carriedBy && this.isInsideMap({ x: p.x, y: p.y }),
+    );
 
     if (parcelsToPickup.length === 0 && this.carryingParcels.size === 0) {
       return null;
+    }
+
+    if (this.deliveryTiles.length === 0) {
+      error("No delivery tiles found on the map", this.id);
+      return null;
+    }
+
+    if (this.carryingParcels.size > 0 && this.isOnDeliveryTile()) {
+      const queue = new Queue<Intent>();
+      queue.push(Intent.DELIVER);
+      return queue;
+    }
+
+    if (this.carryingParcels.size > 0) {
+      const [distances, previous] = this.getDistanceVectorAndPrevious(this.pos);
+      if (!distances || distances.length === 0 || distances[0].length === 0) {
+        error(
+          "Distances not computed, cannot compare delivery vs pickup",
+          this.id,
+        );
+        return null;
+      }
+
+      const sortedDeliveryTiles = this.getSortedClosestDeliveryTile(this.pos);
+      const reachableDeliveryTiles = sortedDeliveryTiles.filter((tile) => {
+        const row = distances[tile.y];
+        if (!row) return false;
+        const dist = row[tile.x];
+        return dist !== undefined && dist !== Infinity;
+      });
+
+      const reachableParcels = parcelsToPickup.filter((p) => {
+        const row = distances[p.y];
+        if (!row) return false;
+        const dist = row[p.x];
+        return dist !== undefined && dist !== Infinity;
+      });
+
+      const nearestDeliveryDist = reachableDeliveryTiles.length
+        ? distances[reachableDeliveryTiles[0].y][reachableDeliveryTiles[0].x]
+        : Infinity;
+      const nearestParcelDist = reachableParcels.reduce((best, p) => {
+        const dist = distances[p.y][p.x];
+        return dist < best ? dist : best;
+      }, Infinity);
+
+      if (
+        reachableDeliveryTiles.length > 0 &&
+        (reachableParcels.length === 0 ||
+          nearestDeliveryDist * config.deliveryOverPickupRatio <=
+            nearestParcelDist)
+      ) {
+        const pathToDelivery = this.getPathFromDistances(
+          distances,
+          previous,
+          reachableDeliveryTiles[0],
+        );
+        if (pathToDelivery !== null) {
+          const queue = new Queue<Intent>();
+          for (const intent of pathToDelivery) {
+            queue.push(intent);
+          }
+          queue.push(Intent.DELIVER);
+          return queue;
+        }
+      }
     }
 
     type Step = {
@@ -557,13 +680,23 @@ export class BelifsSet {
         continue;
       }
 
-      const [distances, previous] = this.getOrCacheDistanceVectorAndPrevious(
-        distanceVectorCache,
+      const [distances, previous] = this.getDistanceVectorAndPrevious(
         current.pos,
       );
+      if (!distances || distances.length === 0 || distances[0].length === 0) {
+        error("Distances not computed, skipping step", this.id);
+        continue;
+      }
+
+      const reachableToPickup = current.toPickup.filter((p) => {
+        const row = distances[p.y];
+        if (!row) return false;
+        const dist = row[p.x];
+        return dist !== undefined && dist !== Infinity;
+      });
 
       // choose the closes legal parcel to pickup, use geometric distance to sort them
-      current.toPickup.sort((a, b) => {
+      reachableToPickup.sort((a, b) => {
         const distA =
           Math.abs(a.x - current.pos.x) + Math.abs(a.y - current.pos.y);
         const distB =
@@ -573,12 +706,12 @@ export class BelifsSet {
 
       // try to pickup up to 3 parcels (to limit branching factor)
       const toPickupCount = Math.min(
-        current.toPickup.length,
+        reachableToPickup.length,
         config.pickupBranchingFactor,
       );
       for (let i = 0; i < toPickupCount; i++) {
         // try to pickup each parcel
-        const parcel = current.toPickup[i];
+        const parcel = reachableToPickup[i];
         const pathToParcel = this.getPathFromDistances(distances, previous, {
           x: parcel.x,
           y: parcel.y,
@@ -590,7 +723,7 @@ export class BelifsSet {
           queue.push({
             pos: { x: parcel.x, y: parcel.y },
             carrying: newCarrying,
-            toPickup: current.toPickup.filter((_, idx) => idx !== i),
+            toPickup: reachableToPickup.filter((_, idx) => idx !== i),
             tilesWithParcels:
               current.tilesWithParcels + pathToParcel.length * newCarrying.size,
             plan: current.plan.concat(pathToParcel, [Intent.PICKUP]),
@@ -606,8 +739,7 @@ export class BelifsSet {
 
       // try to deliver each carrying parcel
       if (current.carrying.size !== 0) {
-        const sortedDeliveryTiles = this.getSortedClosestDeliveryTileFromCache(
-          distanceVectorCache,
+        const sortedDeliveryTiles = this.getSortedClosestDeliveryTile(
           current.pos,
         );
 
@@ -622,7 +754,7 @@ export class BelifsSet {
             queue.push({
               pos: { x: closestDeliveryTile.x, y: closestDeliveryTile.y },
               carrying: new Set<string>(),
-              toPickup: current.toPickup.slice(0),
+              toPickup: reachableToPickup.slice(0),
               tilesWithParcels: 0,
               plan: current.plan.concat(pathToDelivery, [Intent.DELIVER]),
               cost:

@@ -105,7 +105,7 @@ export class PddlPlanner {
     }
 
     for (const agent of agents) {
-      init.push(`(blocked tile${agent.x}_${agent.y})`);
+      init.push(`(blocked tile${Math.floor(agent.x)}_${Math.floor(agent.y)})`);
     }
 
     init.push(`(at agent1 tile${pos.x}_${pos.y})`);
