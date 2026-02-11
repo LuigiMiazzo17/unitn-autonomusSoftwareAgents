@@ -6,6 +6,7 @@ import {
 import config from "config";
 import crypto from "crypto";
 import { Queue } from "queue-typed";
+import { PriorityQueue } from "priority-queue-typescript";
 import { Intent } from "src/itents";
 import { debug, info, error } from "src/utils/log";
 
@@ -328,20 +329,25 @@ export class BelifsSet {
       Array(cols).fill(Infinity),
     );
     const previous = Array.from({ length: rows }, () => Array(cols).fill(null));
-    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+    // const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
 
     distances[start.y][start.x] = 0;
 
-    const pq: { pos: Position; dist: number }[] = [];
-    pq.push({ pos: start, dist: 0 });
+    type PQEntry = { pos: Position; dist: number };
 
-    while (pq.length > 0) {
-      pq.sort((a, b) => a.dist - b.dist);
-      const current = pq.shift()!;
+    const pq = new PriorityQueue<PQEntry>(
+      this.getMap().length * this.getMap()[0].length,
+      (a: PQEntry, b: PQEntry) => a.dist - b.dist,
+    );
+
+    pq.add({ pos: start, dist: 0 });
+
+    while (!pq.empty()) {
+      const current = pq.poll()!;
       const { x, y } = current.pos;
 
-      if (visited[y][x]) continue;
-      visited[y][x] = true;
+      // if (visited[y][x]) continue;
+      // visited[y][x] = true;
 
       for (const dir in directions) {
         const { dx, dy } = directions[dir];
@@ -366,7 +372,7 @@ export class BelifsSet {
           if (alt < distances[ny][nx]) {
             distances[ny][nx] = alt;
             previous[ny][nx] = { x, y };
-            pq.push({ pos: { x: nx, y: ny }, dist: alt });
+            pq.add({ pos: { x: nx, y: ny }, dist: alt });
           }
         }
       }
