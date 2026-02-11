@@ -37,19 +37,10 @@ export class BelifsSet {
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
   private spawnableTiles: SpawnableTiles[];
-  private sortedClosestDeliveryTileCache: { [key: string]: Position[] } = {};
   private knownGroupAgents: Set<string> = new Set<string>();
 
   private normalizePos(pos: Position): Position {
     return { x: Math.floor(pos.x), y: Math.floor(pos.y) };
-  }
-
-  private getAgentsKey(): string {
-    return this.agents
-      .filter((a) => a.id !== this.id)
-      .map((a) => `${a.id}:${Math.floor(a.x)},${Math.floor(a.y)}`)
-      .sort()
-      .join("|");
   }
 
   constructor(
@@ -91,7 +82,6 @@ export class BelifsSet {
   updateMap(width: number, height: number, tiles: Tile[]): void {
     this.map = BelifsSet.convertMap({ width, height, tiles });
     this.mapVersion += 1;
-    this.sortedClosestDeliveryTileCache = {};
     this.agents = [];
     this.parcels = [];
     this.deliveryTiles = this.map
@@ -378,7 +368,7 @@ export class BelifsSet {
       Array(cols).fill(Infinity),
     );
     const previous = Array.from({ length: rows }, () => Array(cols).fill(null));
-    // const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
 
     distances[startPos.y][startPos.x] = 0;
 
@@ -395,8 +385,8 @@ export class BelifsSet {
       const current = pq.poll()!;
       const { x, y } = current.pos;
 
-      // if (visited[y][x]) continue;
-      // visited[y][x] = true;
+      if (visited[y][x]) continue;
+      visited[y][x] = true;
 
       for (const dir in directions) {
         const { dx, dy } = directions[dir];
@@ -518,32 +508,19 @@ export class BelifsSet {
     return map;
   }
 
-  getOrCacheDistanceVectorAndPrevious(
-    cache: { [key: string]: [number[][], Position[][]] },
+  getDistanceVectorAndPrevious(
     pos: Position,
   ): [number[][], (Position | null)[][]] {
     if (!this.isInsideMap(pos)) {
       error(`Position out of bounds: (${pos.x}, ${pos.y})`, this.id);
       return [[], []];
     }
-    // const agentsKey = this.getAgentsKey();
-    // const key = `${this.mapVersion}:${pos.x},${pos.y}:${agentsKey}`;
-    // if (cache[key]) {
-    //   debug(`Using cached distance vector for ${key}`, this.id);
-    //   return [cache[key][0], cache[key][1]];
-    // }
-    //
-    // debug(`Calculating distance vector from scratch for ${key}`, this.id);
 
     const [distances, previous] = this.distance_vector(pos);
-    // cache[key] = [distances, previous];
     return [distances, previous];
   }
 
-  getSortedClosestDeliveryTileFromCache(
-    cache: { [key: string]: [number[][], Position[][]] },
-    pos: Position,
-  ): Position[] {
+  getSortedClosestDeliveryTile(pos: Position): Position[] {
     if (!this.hasValidMap()) {
       error("Map not initialized, cannot compute delivery tiles", this.id);
       return [];
@@ -552,24 +529,8 @@ export class BelifsSet {
       error(`Position out of bounds: (${pos.x}, ${pos.y})`, this.id);
       return [];
     }
-    // const agentsKey = this.getAgentsKey();
-    // const key = `${this.mapVersion}:${pos.x},${pos.y}:${agentsKey}`;
-    // if (this.sortedClosestDeliveryTileCache[key]) {
-    //   debug(`Using cached sorted closest delivery tiles for ${key}`, this.id);
-    //   return this.sortedClosestDeliveryTileCache[key];
-    // }
-    //
-    // debug(
-    //   `Calculating sorted closest delivery tiles from scratch for ${key}`,
-    //   this.id,
-    // );
-    //
-    // if (this.deliveryTiles.length === 0) {
-    //   error("No delivery tiles found on the map", this.id);
-    //   return [];
-    // }
 
-    const distances = this.getOrCacheDistanceVectorAndPrevious(cache, pos)[0];
+    const distances = this.getDistanceVectorAndPrevious(pos)[0];
     if (!distances || distances.length === 0 || distances[0].length === 0) {
       error("Distances not computed, cannot sort delivery tiles", this.id);
       return [];
@@ -592,7 +553,6 @@ export class BelifsSet {
     deliveryTilesWithDistance.sort((a, b) => a.distance - b.distance);
 
     const sortedTiles = deliveryTilesWithDistance.map((d) => d.tile);
-    // this.sortedClosestDeliveryTileCache[key] = sortedTiles;
     return sortedTiles;
   }
 
@@ -605,9 +565,6 @@ export class BelifsSet {
       error(`Position out of bounds: (${this.pos.x}, ${this.pos.y})`, this.id);
       return null;
     }
-    const distanceVectorCache: {
-      [key: string]: [number[][], Position[][]];
-    } = {};
 
     const parcelsToPickup = this.parcels.filter(
       (p) => !p.carriedBy && this.isInsideMap({ x: p.x, y: p.y }),
@@ -629,10 +586,7 @@ export class BelifsSet {
     }
 
     if (this.carryingParcels.size > 0) {
-      const [distances, previous] = this.getOrCacheDistanceVectorAndPrevious(
-        distanceVectorCache,
-        this.pos,
-      );
+      const [distances, previous] = this.getDistanceVectorAndPrevious(this.pos);
       if (!distances || distances.length === 0 || distances[0].length === 0) {
         error(
           "Distances not computed, cannot compare delivery vs pickup",
@@ -641,10 +595,7 @@ export class BelifsSet {
         return null;
       }
 
-      const sortedDeliveryTiles = this.getSortedClosestDeliveryTileFromCache(
-        distanceVectorCache,
-        this.pos,
-      );
+      const sortedDeliveryTiles = this.getSortedClosestDeliveryTile(this.pos);
       const reachableDeliveryTiles = sortedDeliveryTiles.filter((tile) => {
         const row = distances[tile.y];
         if (!row) return false;
@@ -729,8 +680,7 @@ export class BelifsSet {
         continue;
       }
 
-      const [distances, previous] = this.getOrCacheDistanceVectorAndPrevious(
-        distanceVectorCache,
+      const [distances, previous] = this.getDistanceVectorAndPrevious(
         current.pos,
       );
       if (!distances || distances.length === 0 || distances[0].length === 0) {
@@ -789,8 +739,7 @@ export class BelifsSet {
 
       // try to deliver each carrying parcel
       if (current.carrying.size !== 0) {
-        const sortedDeliveryTiles = this.getSortedClosestDeliveryTileFromCache(
-          distanceVectorCache,
+        const sortedDeliveryTiles = this.getSortedClosestDeliveryTile(
           current.pos,
         );
 
