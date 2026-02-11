@@ -1,25 +1,40 @@
+import config from "config";
+import fs from "fs";
+import path from "path";
 import { Queue } from "queue-typed";
 import { BelifsSet, TileType } from "src/belifs";
-import config from "config";
 import { Intent } from "src/itents";
 import { debug, error, info } from "src/utils/log";
+import { fileURLToPath } from "url";
 
 export class PddlPlanner {
   private agentId: string;
   private belifsSet: BelifsSet;
+  private static_objects: string[] = [];
+  private staticInit: string[] = [];
+  private dynamicObjects: string[] = [];
+  private dynamicInit: string[] = [];
+  private goal: string = "";
+  private id: string | null = null;
 
   constructor(agentId: string, belifsSet: BelifsSet) {
     this.agentId = agentId;
     this.belifsSet = belifsSet;
-
-    info("PddlExecutor initialized", agentId);
   }
 
-  private definePddlProblem(): string {
-    const pos = this.belifsSet.getPos();
+  static async build(
+    agentId: string,
+    belifsSet: BelifsSet,
+  ): Promise<PddlPlanner> {
+    const planner = new PddlPlanner(agentId, belifsSet);
+
+    info("PddlExecutor initialized", agentId);
+
+    return planner;
+  }
+
+  private getStaticObjectsAndInit(): [string[], string[]] {
     const map = this.belifsSet.getMap();
-    const parcels = this.belifsSet.getParcels();
-    const agents = this.belifsSet.getAgents();
 
     const objects = ["agent1 - agent"];
     const init = [];
@@ -58,6 +73,21 @@ export class PddlPlanner {
         }
       }
     }
+    init.push(`(= (total-cost) 0)`);
+
+    return [objects, init];
+  }
+
+  private getDynamicObjectsAndInitAndGoal(): [string[], string[], string] {
+    const parcels = this.belifsSet.getParcels();
+    const agents = this.belifsSet
+      .getAgents()
+      .filter((a) => a.id !== this.agentId);
+
+    const pos = this.belifsSet.getPos();
+
+    const objects = [];
+    const init = [];
 
     for (const parcel of parcels) {
       if (parcel.carriedBy !== null && parcel.carriedBy !== this.agentId) {
@@ -88,113 +118,219 @@ export class PddlPlanner {
       goal.push(`(delivered parcel${parcel.id})`);
     }
 
-    debug("PddlProblem generated", this.agentId);
-
+    debug("PddlProblem dynamic objects generated", this.agentId);
     let goalStr = goal.length > 1 ? "\n        (and\n        " : "\n        ";
     goalStr += goal.join("\n        ");
     if (goal.length > 1) {
       goalStr += "\n        )";
     }
 
-    init.push(`(= (total-cost) 0)`);
-
-    return `(define (problem deliveroo)
-  (:domain deliveroo)
-  (:objects
-    ${objects.join("\n        ")}
-  )
-  (:init
-    ${init.join("\n        ")}
-  )
-  (:goal ${goalStr}
-  )
-  (:metric minimize (total-cost)
-  )
-)`;
+    return [objects, init, goalStr];
   }
 
-  async solvePddlProblem(): Promise<Queue<Intent> | null> {
-    debug("Solving PDDL problem", this.agentId);
+  private async getPddlSolution(): Promise<string[] | null> {
+    const [dynamicObjects, dynamicInit, goal] =
+      this.getDynamicObjectsAndInitAndGoal();
 
-    const pddlProblem = this.definePddlProblem();
-    const plan = await fetch(config.solverUrl, {
+    const objectsDiff: { add: string[]; remove: string[] } = {
+      add: [],
+      remove: [],
+    };
+    const initDiff: { add: string[]; remove: string[] } = {
+      add: [],
+      remove: [],
+    };
+    let goalDiff: string | null = null;
+
+    if (this.id === null) {
+      let pddlDomain = "";
+      try {
+        const pddlDomainFilePath = path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "domain.pddl",
+        );
+        pddlDomain = await fs.promises.readFile(pddlDomainFilePath, "utf-8");
+      } catch (err) {
+        error(`Error reading PDDL domain file: ${err || "Unknown error"}`);
+        throw err;
+      }
+
+      [this.static_objects, this.staticInit] = this.getStaticObjectsAndInit();
+
+      [this.dynamicObjects, this.dynamicInit, this.goal] =
+        this.getDynamicObjectsAndInitAndGoal();
+
+      const objects = [...this.static_objects, ...dynamicObjects];
+      const init = [...this.staticInit, ...dynamicInit];
+
+      const pddlProblem = `(define (problem deliveroo)
+          (:domain deliveroo)
+          (:objects
+        ${objects.join("\n        ")}
+          )
+          (:init
+        ${init.join("\n        ")}
+          )
+          (:goal ${this.goal}
+          )
+          (:metric minimize (total-cost)
+          )
+        )`;
+
+      info("Creating new PDDL problem", this.agentId);
+      this.id = await fetch(config.solverHost + "/problem", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          problem: pddlProblem,
+          domain: pddlDomain,
+        }),
+      })
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.status === "error") {
+            error(
+              `Error from PDDL solver: ${json.msg || "Unknown error"}`,
+              this.agentId,
+            );
+            throw new Error(json.msg || "Unknown error");
+          }
+          if (json.id === undefined) {
+            throw new Error("No id returned from PDDL solver");
+          }
+          return json.id;
+        });
+      info(`PDDL problem created with id ${this.id}`, this.agentId);
+    } else {
+      objectsDiff.add = dynamicObjects.filter(
+        (obj) => !this.dynamicObjects.includes(obj),
+      );
+      objectsDiff.remove = this.dynamicObjects.filter(
+        (obj) => !dynamicObjects.includes(obj),
+      );
+
+      initDiff.add = dynamicInit.filter(
+        (init) => !this.dynamicInit.includes(init),
+      );
+      initDiff.remove = this.dynamicInit.filter(
+        (init) => !dynamicInit.includes(init),
+      );
+
+      if (goal !== this.goal) {
+        goalDiff = goal;
+      }
+
+      this.dynamicObjects = dynamicObjects;
+      this.dynamicInit = dynamicInit;
+      this.goal = goal;
+      debug("PDDL problem updated", this.agentId);
+    }
+
+    debug("Posting PDDL problem update", this.agentId);
+    return await fetch(config.solverHost + "/solve", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        problem: pddlProblem,
+        id: this.id,
+        differences: {
+          objects: objectsDiff,
+          init: initDiff,
+          goal: goalDiff,
+        },
       }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(
-            `HTTP error while solving PDDL, status: ${res.status}`,
-          );
-        }
-        return res;
-      })
       .then((res) => res.json())
       .then((json) => {
+        if (json.status === "error") {
+          error(`Error from PDDL solver: ${json.msg || "Unknown error"}`);
+          throw new Error(json.msg || "Unknown error");
+        }
         if (json.status === "success" && Array.isArray(json.plan)) {
-          const queue = new Queue<Intent>();
-          for (const step of json.plan) {
-            let intent = undefined;
-
-            if (step.startsWith("move")) {
-              const parts = step
-                .substring(5, step.length - 1)
-                .split(", ")
-                .map((s: string) => s.trim());
-              const from = parts[1];
-              const to = parts[2];
-              const [fromX, fromY] = from
-                .substring(4)
-                .split("_")
-                .map((v: string) => parseInt(v));
-              const [toX, toY] = to
-                .substring(4)
-                .split("_")
-                .map((v: string) => parseInt(v));
-
-              if (toX === fromX + 1 && toY === fromY) {
-                intent = Intent.MOVE_RIGHT;
-              } else if (toX === fromX - 1 && toY === fromY) {
-                intent = Intent.MOVE_LEFT;
-              } else if (toX === fromX && toY === fromY + 1) {
-                intent = Intent.MOVE_UP;
-              } else if (toX === fromX && toY === fromY - 1) {
-                intent = Intent.MOVE_DOWN;
-              } else {
-                error(
-                  `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
-                  this.agentId,
-                );
-                return null;
-              }
-            } else if (step.startsWith("pickup")) {
-              intent = Intent.PICKUP;
-            } else if (step.startsWith("deliver")) {
-              intent = Intent.DELIVER;
-            } else {
-              error(`Unknown action in PDDL plan: ${step}`, this.agentId);
-              return null;
-            }
-
-            if (intent !== undefined) {
-              queue.push(intent);
-            }
-          }
-          return queue;
+          return json.plan;
         } else {
           return null;
         }
       })
       .catch((err) => {
         error(`Error solving PDDL problem: ${err || "Unknown error"}`);
-        process.exit(1);
+        fetch(config.solverHost + "/problem", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: this.id,
+          }),
+        });
+        this.id = null;
+        error("PDDL problem deleted due to error", this.agentId);
+        process.exit(1); // TODO: handle this better
       });
+  }
 
-    return plan;
+  async solvePddlProblem(): Promise<Queue<Intent> | null> {
+    debug("Solving PDDL problem", this.agentId);
+
+    const planSteps = await this.getPddlSolution();
+    if (planSteps === null) {
+      debug("No plan found", this.agentId);
+      return null;
+    }
+
+    debug("Plan found!, parsing it!", this.agentId);
+
+    const queue = new Queue<Intent>();
+    for (const step of planSteps) {
+      let intent = undefined;
+
+      if (step.startsWith("move")) {
+        const parts = step
+          .substring(5, step.length - 1)
+          .split(", ")
+          .map((s: string) => s.trim());
+        const from = parts[1];
+        const to = parts[2];
+        const [fromX, fromY] = from
+          .substring(4)
+          .split("_")
+          .map((v: string) => parseInt(v));
+        const [toX, toY] = to
+          .substring(4)
+          .split("_")
+          .map((v: string) => parseInt(v));
+
+        if (toX === fromX + 1 && toY === fromY) {
+          intent = Intent.MOVE_RIGHT;
+        } else if (toX === fromX - 1 && toY === fromY) {
+          intent = Intent.MOVE_LEFT;
+        } else if (toX === fromX && toY === fromY + 1) {
+          intent = Intent.MOVE_UP;
+        } else if (toX === fromX && toY === fromY - 1) {
+          intent = Intent.MOVE_DOWN;
+        } else {
+          error(
+            `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
+            this.agentId,
+          );
+          return null;
+        }
+      } else if (step.startsWith("pickup")) {
+        intent = Intent.PICKUP;
+      } else if (step.startsWith("deliver")) {
+        intent = Intent.DELIVER;
+      } else {
+        error(`Unknown action in PDDL plan: ${step}`, this.agentId);
+        return null;
+      }
+
+      if (intent !== undefined) {
+        queue.push(intent);
+      }
+    }
+    return queue;
   }
 }

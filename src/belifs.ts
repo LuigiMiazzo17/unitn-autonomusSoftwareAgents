@@ -7,7 +7,7 @@ import config from "config";
 import crypto from "crypto";
 import { Queue } from "queue-typed";
 import { PriorityQueue } from "priority-queue-typescript";
-import { Intent } from "src/itents";
+import { Intent, CurrentOperationMode } from "./itents";
 import { debug, info, error } from "src/utils/log";
 
 export enum TileType {
@@ -131,23 +131,26 @@ export class BelifsSet {
     );
   }
 
-  getChecksumOfBelifs(): string {
+  getChecksumOfBelifs(operationMode: CurrentOperationMode): string {
     const parcelsStr = this.parcels
-      .map((p) => `${p.id}-${p.x}-${p.y}-${p.carriedBy ?? "null"}`)
+      .map((p) => {
+        let carriedBy = p.carriedBy ?? "null";
+        if (p.carriedBy == this.id) {
+          carriedBy = "null";
+        }
+        return `${p.id}-${carriedBy}`;
+      })
       .sort()
       .join("|");
     const agentsStr = this.agents
       .map((a) => `${a.id}-${Math.floor(a.x)}-${Math.floor(a.y)}`)
       .sort()
       .join("|");
-    const checksum = crypto
+
+    return crypto
       .createHash("md5")
-      .update(`${this.pos.x}-${this.pos.y}|${parcelsStr}|${agentsStr}`)
+      .update(`${parcelsStr}|${agentsStr}|${operationMode}`)
       .digest("hex");
-
-    debug(`Belifs checksum: ${checksum}`, this.id);
-
-    return checksum;
   }
 
   getKnwonAgentsIds(): Set<string> {
