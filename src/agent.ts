@@ -35,6 +35,7 @@ export default class Agent {
   private currentOperationMode: CurrentOperationMode =
     CurrentOperationMode.HUNTING;
   private moveFailCount: number = 0;
+  private belifsChecksum: string = "";
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -200,10 +201,22 @@ export default class Agent {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
 
+    const belifsChecksum = this.belifs.getChecksumOfBelifs(
+      this.currentOperationMode,
+    );
+    if (belifsChecksum != this.belifsChecksum) {
+      debug(`Belifs checksum before: ${this.belifsChecksum}`, this.id);
+      debug(`Belifs checksum after: ${belifsChecksum}`, this.id);
+      this.belifsChecksum = belifsChecksum;
+      info(`Beliefs changed, clearing plan`, this.id);
+
+      this.plan = new Queue<Intent>();
+    }
+
     let optionalIntent = this.plan.shift();
 
     if (optionalIntent === undefined) {
-      this.plan = await this.getIntents();
+      this.plan = await this.generateIntents();
 
       optionalIntent = this.plan.shift();
       if (optionalIntent === undefined) {
@@ -310,7 +323,7 @@ export default class Agent {
     return true;
   }
 
-  async getIntents(): Promise<Queue<Intent>> {
+  async generateIntents(): Promise<Queue<Intent>> {
     if (this.belifs.getParcels().length === 0) {
       this.currentOperationMode = CurrentOperationMode.HUNTING;
       debug("Set HUNTING mode", this.id);
