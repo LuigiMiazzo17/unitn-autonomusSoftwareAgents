@@ -17,7 +17,7 @@ export default {
   host: process.env.HOST || "http://localhost:8080",
   logLevel: LOG_LEVELS[logLevel as keyof typeof LOG_LEVELS],
   maxMoveFailCount: 3,
-  solverUrl: solverUrl || undefined,
+  solverUrl: solverUrl || "http://localhost:5000/solve",
   planner: planner,
   pickupBranchingFactor: parseInt(
     process.env.PICKUP_BRANCHING_FACTOR || "3",
@@ -26,9 +26,6 @@ export default {
   deliveryOverPickupRatio: parseFloat(
     process.env.DELIVERY_OVER_PICKUP_RATIO || "1.5",
   ),
-  avoidAgentsInPlanning: process.env.AVOID_AGENTS_IN_PLANNING
-    ? process.env.AVOID_AGENTS_IN_PLANNING === "true"
-    : true,
   recalculatePlanOnParcelUpdate: process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE
     ? process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true"
     : true,

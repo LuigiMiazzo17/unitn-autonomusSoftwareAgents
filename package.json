@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@unitn-asa/deliveroo-js-client": "^2.0.3",
+    "priority-queue-typescript": "^2.0.3",
     "queue-typed": "^2.0.4"
   },
   "devDependencies": {
