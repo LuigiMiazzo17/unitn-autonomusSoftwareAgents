@@ -9,7 +9,9 @@ import config from "config";
 import { BeliefSet, Position } from "src/beliefs";
 import { debug, info, warn, error } from "src/utils/log";
 import { PddlPlanner } from "src/pddl";
-import { Intent, CurrentOperationMode } from "src/intents";
+import { Action, Intention, OperationMode } from "src/intents";
+import { IntentionSelector } from "src/intentions";
+import { generateSmartPlan, generateHuntingPlan } from "src/plan";
 import { Queue } from "queue-typed";
 
 const FRAME_ADVANCE_INTERVAL = 100;
@@ -30,10 +32,9 @@ export default class Agent {
   private id: string;
   private beliefs: BeliefSet;
   private pddlPlanner: PddlPlanner;
+  private intentionSelector: IntentionSelector;
   private lastTimestampUpdate: Timestamp | null = null;
-  private plan: Queue<Intent> = new Queue<Intent>();
-  private currentOperationMode: CurrentOperationMode =
-    CurrentOperationMode.HUNTING;
+  private plan: Queue<Action> = new Queue<Action>();
   private moveFailCount: number = 0;
   private currentScore: number = 0;
   private stopped: boolean = false;
@@ -92,7 +93,7 @@ export default class Agent {
     const somethingChanged = this.beliefs.updateParcels(parcels);
     if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
-      this.plan = new Queue<Intent>();
+      this.plan = new Queue<Action>();
     }
   };
 
@@ -138,8 +139,8 @@ export default class Agent {
         `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
         this.id,
       );
-      this.plan = new Queue<Intent>();
-      this.currentOperationMode = CurrentOperationMode.HUNTING;
+      this.plan = new Queue<Action>();
+      this.intentionSelector.setOperationMode(OperationMode.HUNTING);
     }
 
     debug(
@@ -171,6 +172,7 @@ export default class Agent {
       x: Math.floor(me.x),
       y: Math.floor(me.y),
     });
+    this.intentionSelector = new IntentionSelector(me.id);
     this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
   }
 
@@ -235,8 +237,9 @@ export default class Agent {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
 
+    // 1. Check if beliefs changed → invalidate current plan
     const beliefsChecksum = this.beliefs.getChecksumOfBeliefs(
-      this.currentOperationMode,
+      this.intentionSelector.getOperationMode(),
     );
     if (beliefsChecksum != this.beliefsChecksum) {
       debug(`Beliefs checksum before: ${this.beliefsChecksum}`, this.id);
@@ -244,35 +247,41 @@ export default class Agent {
       this.beliefsChecksum = beliefsChecksum;
       info(`Beliefs changed, clearing plan`, this.id);
 
-      this.plan = new Queue<Intent>();
+      this.plan = new Queue<Action>();
     }
 
-    let optionalIntent = this.plan.shift();
+    // 2. Dequeue next action from current plan
+    let nextAction = this.plan.shift();
 
-    if (optionalIntent === undefined) {
-      this.plan = await this.generateIntents();
+    // 3. If plan is empty → select intention → generate new plan → dequeue
+    if (nextAction === undefined) {
+      const intention = this.intentionSelector.selectIntention(this.beliefs);
+      this.plan = await this.generatePlan(intention);
 
-      optionalIntent = this.plan.shift();
-      if (optionalIntent === undefined) {
-        warn(`Correctly got a plan, but no intent to execute`, this.id);
+      nextAction = this.plan.shift();
+      if (nextAction === undefined) {
+        warn(`Generated a plan, but no action to execute`, this.id);
         return;
       }
     }
 
-    const actionResult = await this.executeIntent(optionalIntent);
+    // 4. Execute the action
+    const actionResult = await this.executeAction(nextAction);
+
+    // 5. Handle failure
     if (!actionResult) {
       warn(`Action failed, replanning`, this.id);
-      switch (optionalIntent) {
-        case Intent.MOVE_UP:
-        case Intent.MOVE_DOWN:
-        case Intent.MOVE_LEFT:
-        case Intent.MOVE_RIGHT: {
-          this.plan.addAt(0, optionalIntent);
+      switch (nextAction) {
+        case Action.MOVE_UP:
+        case Action.MOVE_DOWN:
+        case Action.MOVE_LEFT:
+        case Action.MOVE_RIGHT: {
+          this.plan.addAt(0, nextAction);
           break;
         }
         default: {
-          this.plan = new Queue<Intent>();
-          this.currentOperationMode = CurrentOperationMode.HUNTING;
+          this.plan = new Queue<Action>();
+          this.intentionSelector.setOperationMode(OperationMode.HUNTING);
           break;
         }
       }
@@ -283,28 +292,28 @@ export default class Agent {
     this.frame++;
   }
 
-  async executeIntent(intent: Intent): Promise<boolean> {
-    debug(`Executing intent: ${Intent[intent]}`, this.id);
+  async executeAction(action: Action): Promise<boolean> {
+    debug(`Executing action: ${Action[action]}`, this.id);
 
     const pos = this.beliefs.getPos();
 
-    switch (intent) {
-      case Intent.MOVE_UP:
+    switch (action) {
+      case Action.MOVE_UP:
         return await this.move("up", { x: pos.x, y: pos.y + 1 });
-      case Intent.MOVE_DOWN:
+      case Action.MOVE_DOWN:
         return await this.move("down", { x: pos.x, y: pos.y - 1 });
-      case Intent.MOVE_LEFT:
+      case Action.MOVE_LEFT:
         return await this.move("left", { x: pos.x - 1, y: pos.y });
-      case Intent.MOVE_RIGHT:
+      case Action.MOVE_RIGHT:
         return await this.move("right", { x: pos.x + 1, y: pos.y });
-      case Intent.PICKUP:
+      case Action.PICKUP:
         return await this.pickup();
-      case Intent.DELIVER:
+      case Action.DELIVER:
         return await this.deliver();
-      case Intent.NOOP:
+      case Action.NOOP:
         return true;
       default:
-        error(`Unknown intent: ${intent}`, this.id);
+        error(`Unknown action: ${action}`, this.id);
         return false;
     }
   }
@@ -359,38 +368,37 @@ export default class Agent {
     return true;
   }
 
-  async generateIntents(): Promise<Queue<Intent>> {
-    if (this.beliefs.getParcels().length === 0) {
-      this.currentOperationMode = CurrentOperationMode.HUNTING;
-      debug("Set HUNTING mode", this.id);
-    } else {
-      this.currentOperationMode = CurrentOperationMode.PLANNER;
-      debug("Set Planner mode", this.id);
-    }
-
-    switch (this.currentOperationMode) {
-      case CurrentOperationMode.HUNTING: {
-        info(`Planning in HUNTING mode`, this.id);
-        return this.beliefs.getHuntingMovePlan();
+  async generatePlan(intention: Intention): Promise<Queue<Action>> {
+    switch (intention.kind) {
+      case "explore_spawn": {
+        info(`Planning: explore spawn tile`, this.id);
+        return generateHuntingPlan(this.beliefs, intention.pos);
       }
-      case CurrentOperationMode.PLANNER: {
-        info(`Planning in Planner mode`, this.id);
+      case "deliver_parcels": {
+        info(`Planning: deliver parcels`, this.id);
         const plan =
           config.planner === "pddl"
             ? await this.pddlPlanner.solvePddlProblem()
-            : this.beliefs.getSmartPlan();
+            : generateSmartPlan(this.beliefs);
 
         if (plan === null) {
-          warn(`Planner planning failed, switching to HUNTING mode`, this.id);
-          this.currentOperationMode = CurrentOperationMode.HUNTING;
-          return this.beliefs.getHuntingMovePlan();
-        } else {
-          return plan;
+          warn(`Planner failed, falling back to hunting`, this.id);
+          this.intentionSelector.setOperationMode(OperationMode.HUNTING);
+          const fallbackIntention = this.intentionSelector.selectIntention(
+            this.beliefs,
+          );
+          return this.generatePlan(fallbackIntention);
         }
+        return plan;
       }
-      default: {
-        error(`Unknown operation mode: ${this.currentOperationMode}`, this.id);
-        throw new Error(`Unknown operation mode: ${this.currentOperationMode}`);
+      case "go_pickup": {
+        info(`Planning: go pickup parcel`, this.id);
+        return generateSmartPlan(this.beliefs) ?? new Queue<Action>();
+      }
+      case "noop": {
+        const q = new Queue<Action>();
+        q.push(Action.NOOP);
+        return q;
       }
     }
   }
