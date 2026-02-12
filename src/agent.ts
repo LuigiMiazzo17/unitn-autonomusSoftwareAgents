@@ -9,7 +9,7 @@ import config from "config";
 import { BeliefSet, Position } from "src/beliefs";
 import { debug, info, warn, error } from "src/utils/log";
 import { PddlPlanner } from "src/pddl";
-import { Action, Intention, OperationMode } from "src/intents";
+import { Action, Intention } from "src/intents";
 import { IntentionSelector } from "src/intentions";
 import { generateSmartPlan, generateHuntingPlan } from "src/plan";
 import { Queue } from "queue-typed";
@@ -39,118 +39,6 @@ export default class Agent {
   private currentScore: number = 0;
   private stopped: boolean = false;
   private beliefsChecksum: string = "";
-
-  onMap: (width: number, height: number, tiles: Tile[]) => void = (
-    width,
-    height,
-    tiles,
-  ) => {
-    info(`Map update event: ${width}x${height}`, this.id);
-    this.beliefs.updateMap(width, height, tiles);
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onMsg: (senderId: string, _: unknown, msg: any) => void = (
-    senderId,
-    _,
-    msg,
-  ) => {
-    info(`Received message: ${JSON.stringify(msg)}`, this.id);
-
-    if (!msg.agentType || msg.agentType !== "svejaMacachi") {
-      warn(`Ignoring message from unknown agent type`, this.id);
-    }
-
-    switch (msg.type) {
-      case "handshake": {
-        info(`Handshake received from agent ${senderId}`, this.id);
-        this.apiConnection.emitSay(senderId, {
-          type: "handshake-ack",
-          agentType: "svejaMacachi",
-        } as Message);
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
-      case "handshake-ack": {
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
-    }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onAgentConnected: (state: string, agent: any) => void = (state, agent) => {
-    debug(
-      `Agent connected: '${JSON.stringify(agent)}’ is now ${state}`,
-      this.id,
-    );
-  };
-
-  onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
-    debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    const somethingChanged = this.beliefs.updateParcels(parcels);
-    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
-      info(`Parcels changed, dropping plan`, this.id);
-      this.plan = new Queue<Action>();
-    }
-  };
-
-  onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
-    debug(`Agents sensing event: ${agents.length} agents`, this.id);
-    const newAgents = agents.filter(
-      (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
-    );
-    this.beliefs.updateAgents(agents);
-    for (const agent of newAgents) {
-      info(`Sending handshake to agent ${agent.id}`, this.id);
-      this.apiConnection.emitSay(agent.id, {
-        type: "handshake",
-        agentType: "svejaMacachi",
-      } as Message);
-    }
-  };
-
-  onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
-    agent,
-    timestamp,
-  ) => {
-    if (
-      this.lastTimestampUpdate &&
-      timestamp.frame < this.lastTimestampUpdate.frame
-    ) {
-      warn(
-        `Ignoring out-of-order timestamp: ${timestamp.frame} <= ${this.lastTimestampUpdate.frame}`,
-        this.id,
-      );
-      return;
-    }
-
-    if (this.moveFailCount >= config.maxMoveFailCount) {
-      agent.x = Math.floor(agent.x);
-      agent.y = Math.floor(agent.y);
-      this.beliefs.updatePos({
-        x: Math.floor(agent.x),
-        y: Math.floor(agent.y),
-      });
-      this.moveFailCount = 0;
-      warn(
-        `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
-        this.id,
-      );
-      this.plan = new Queue<Action>();
-      this.intentionSelector.setOperationMode(OperationMode.HUNTING);
-    }
-
-    debug(
-      `You event: position (${Math.floor(agent.x)}, ${Math.floor(agent.y)}) at ${timestamp.ms}`,
-      this.id,
-    );
-
-    this.currentScore = agent.score;
-    this.lastTimestampUpdate = timestamp;
-  };
 
   constructor(
     apiConnection: DeliverooApi,
@@ -186,6 +74,123 @@ export default class Agent {
     );
   }
 
+  private onMap: (width: number, height: number, tiles: Tile[]) => void = (
+    width,
+    height,
+    tiles,
+  ) => {
+    info(`Map update event: ${width}x${height}`, this.id);
+    this.beliefs.updateMap(BeliefSet.convertMap({ width, height, tiles }));
+    this.plan = new Queue<Action>();
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onMsg: (senderId: string, _: unknown, msg: any) => void = (
+    senderId,
+    _,
+    msg,
+  ) => {
+    info(`Received message: ${JSON.stringify(msg)}`, this.id);
+
+    if (!msg.agentType || msg.agentType !== "svejaMacachi") {
+      warn(`Ignoring message from unknown agent type`, this.id);
+    }
+
+    switch (msg.type) {
+      case "handshake": {
+        info(`Handshake received from agent ${senderId}`, this.id);
+        this.apiConnection.emitSay(senderId, {
+          type: "handshake-ack",
+          agentType: "svejaMacachi",
+        } as Message);
+        info(`Adding known agent ${senderId}`, this.id);
+        this.beliefs.addKnownGroupAgent(senderId);
+        break;
+      }
+      case "handshake-ack": {
+        info(`Adding known agent ${senderId}`, this.id);
+        this.beliefs.addKnownGroupAgent(senderId);
+        break;
+      }
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onAgentConnected: (state: string, agent: any) => void = (
+    state,
+    agent,
+  ) => {
+    debug(
+      `Agent connected: '${JSON.stringify(agent)}’ is now ${state}`,
+      this.id,
+    );
+  };
+
+  private onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
+    debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
+    const somethingChanged = this.beliefs.updateParcels(parcels);
+    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+      info(`Parcels changed, dropping plan`, this.id);
+      this.plan = new Queue<Action>();
+    }
+  };
+
+  private onAgentsSensing: (agents: DeliverooAgentType[]) => void = (
+    agents,
+  ) => {
+    debug(`Agents sensing event: ${agents.length} agents`, this.id);
+    const newAgents = agents.filter(
+      (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
+    );
+    this.beliefs.updateAgents(agents);
+    for (const agent of newAgents) {
+      info(`Sending handshake to agent ${agent.id}`, this.id);
+      this.apiConnection.emitSay(agent.id, {
+        type: "handshake",
+        agentType: "svejaMacachi",
+      } as Message);
+    }
+  };
+
+  private onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
+    agent,
+    timestamp,
+  ) => {
+    if (
+      this.lastTimestampUpdate &&
+      timestamp.frame < this.lastTimestampUpdate.frame
+    ) {
+      warn(
+        `Ignoring out-of-order timestamp: ${timestamp.frame} <= ${this.lastTimestampUpdate.frame}`,
+        this.id,
+      );
+      return;
+    }
+
+    if (this.moveFailCount >= config.maxMoveFailCount) {
+      agent.x = Math.floor(agent.x);
+      agent.y = Math.floor(agent.y);
+      this.beliefs.updatePos({
+        x: Math.floor(agent.x),
+        y: Math.floor(agent.y),
+      });
+      this.moveFailCount = 0;
+      warn(
+        `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
+        this.id,
+      );
+      this.plan = new Queue<Action>();
+    }
+
+    debug(
+      `You event: position (${Math.floor(agent.x)}, ${Math.floor(agent.y)}) at ${timestamp.ms}`,
+      this.id,
+    );
+
+    this.currentScore = agent.score;
+    this.lastTimestampUpdate = timestamp;
+  };
+
   async run(): Promise<void> {
     await this.runFor(Infinity);
   }
@@ -203,7 +208,7 @@ export default class Agent {
 
     while (!this.stopped) {
       const start = Date.now();
-      await this.frameAdvance();
+      await this.nextFrame();
 
       const elapsed = Date.now() - start;
       if (elapsed < FRAME_ADVANCE_INTERVAL) {
@@ -232,15 +237,13 @@ export default class Agent {
     return this.frame;
   }
 
-  async frameAdvance(): Promise<void> {
+  async nextFrame(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
 
     // 1. Check if beliefs changed → invalidate current plan
-    const beliefsChecksum = this.beliefs.getChecksumOfBeliefs(
-      this.intentionSelector.getOperationMode(),
-    );
+    const beliefsChecksum = this.beliefs.getChecksumOfBeliefs();
     if (beliefsChecksum != this.beliefsChecksum) {
       debug(`Beliefs checksum before: ${this.beliefsChecksum}`, this.id);
       debug(`Beliefs checksum after: ${beliefsChecksum}`, this.id);
@@ -251,18 +254,17 @@ export default class Agent {
     }
 
     // 2. Dequeue next action from current plan
-    let nextAction = this.plan.shift();
+    const nextAction = this.plan.shift();
 
-    // 3. If plan is empty → select intention → generate new plan → dequeue
+    // 3. If plan is empty → select intention → generate new plan
     if (nextAction === undefined) {
+      info(
+        `Plan is empty, selecting new intention and generating plan`,
+        this.id,
+      );
       const intention = this.intentionSelector.selectIntention(this.beliefs);
       this.plan = await this.generatePlan(intention);
-
-      nextAction = this.plan.shift();
-      if (nextAction === undefined) {
-        warn(`Generated a plan, but no action to execute`, this.id);
-        return;
-      }
+      return;
     }
 
     // 4. Execute the action
@@ -270,21 +272,8 @@ export default class Agent {
 
     // 5. Handle failure
     if (!actionResult) {
-      warn(`Action failed, replanning`, this.id);
-      switch (nextAction) {
-        case Action.MOVE_UP:
-        case Action.MOVE_DOWN:
-        case Action.MOVE_LEFT:
-        case Action.MOVE_RIGHT: {
-          this.plan.addAt(0, nextAction);
-          break;
-        }
-        default: {
-          this.plan = new Queue<Action>();
-          this.intentionSelector.setOperationMode(OperationMode.HUNTING);
-          break;
-        }
-      }
+      warn(`Action failed, clearing plan`, this.id);
+      this.plan = new Queue<Action>();
     } else {
       debug(`Action succeeded`, this.id);
     }
@@ -382,12 +371,16 @@ export default class Agent {
             : generateSmartPlan(this.beliefs);
 
         if (plan === null) {
-          warn(`Planner failed, falling back to hunting`, this.id);
-          this.intentionSelector.setOperationMode(OperationMode.HUNTING);
-          const fallbackIntention = this.intentionSelector.selectIntention(
-            this.beliefs,
-          );
-          return this.generatePlan(fallbackIntention);
+          warn(`Planner failed, falling back to exploring`, this.id);
+          const spawnTiles = this.beliefs.getSpawnableTiles();
+          if (spawnTiles.length === 0) {
+            const q = new Queue<Action>();
+            q.push(Action.NOOP);
+            return q;
+          }
+          const target =
+            spawnTiles[Math.floor(Math.random() * spawnTiles.length)];
+          return generateHuntingPlan(this.beliefs, target.pos);
         }
         return plan;
       }

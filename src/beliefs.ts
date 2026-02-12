@@ -4,7 +4,6 @@ import {
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
 import crypto from "crypto";
-import { OperationMode } from "./intents";
 import { debug, error } from "src/utils/log";
 
 export enum TileType {
@@ -27,13 +26,13 @@ export type SpawnableTiles = {
 export class BeliefSet {
   private id: string;
   private pos: Position;
-  private map: TileType[][];
+  private map: TileType[][] = [];
   private mapVersion: number = 0;
   private deliveryTiles: Position[] = [];
   private parcels: DeliverooParcelType[] = [];
   private agents: DeliverooAgentType[] = [];
   private carryingParcels: Set<string> = new Set<string>();
-  private spawnableTiles: SpawnableTiles[];
+  private spawnableTiles: SpawnableTiles[] = [];
   private knownGroupAgents: Set<string> = new Set<string>();
 
   private normalizePos(pos: Position): Position {
@@ -42,30 +41,13 @@ export class BeliefSet {
 
   constructor(
     id: string,
-    map: { width: number; height: number; tiles: Tile[] },
+    unserialized_map: { width: number; height: number; tiles: Tile[] },
     pos: Position,
   ) {
     this.id = id;
-    this.map = BeliefSet.convertMap(map);
-
-    // precalculate deplivery tiles
-    this.deliveryTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => pos as Position),
-      )
-      .flat();
+    const map = BeliefSet.convertMap(unserialized_map);
+    this.updateMap(map);
     this.pos = this.normalizePos(pos);
-    this.spawnableTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
-      )
-      .flat() as SpawnableTiles[];
   }
 
   updatePos(pos: Position): void {
@@ -76,8 +58,8 @@ export class BeliefSet {
     return this.pos;
   }
 
-  updateMap(width: number, height: number, tiles: Tile[]): void {
-    this.map = BeliefSet.convertMap({ width, height, tiles });
+  updateMap(map: TileType[][]): void {
+    this.map = map;
     this.mapVersion += 1;
     this.agents = [];
     this.parcels = [];
@@ -118,7 +100,7 @@ export class BeliefSet {
     );
   }
 
-  getChecksumOfBeliefs(operationMode: OperationMode): string {
+  getChecksumOfBeliefs(): string {
     const parcelsStr = this.parcels
       .map((p) => {
         let carriedBy = p.carriedBy ?? "null";
@@ -136,7 +118,7 @@ export class BeliefSet {
 
     return crypto
       .createHash("md5")
-      .update(`${parcelsStr}|${agentsStr}|${operationMode}`)
+      .update(`${parcelsStr}|${agentsStr}`)
       .digest("hex");
   }
 
