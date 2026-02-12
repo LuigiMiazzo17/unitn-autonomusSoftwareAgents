@@ -6,10 +6,10 @@ import {
   Parcel,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { BelifsSet, Position } from "src/belifs";
+import { BeliefSet, Position } from "src/beliefs";
 import { debug, info, warn, error } from "src/utils/log";
 import { PddlPlanner } from "src/pddl";
-import { Intent, CurrentOperationMode } from "src/itents";
+import { Intent, CurrentOperationMode } from "src/intents";
 import { Queue } from "queue-typed";
 
 const FRAME_ADVANCE_INTERVAL = 100;
@@ -28,7 +28,7 @@ export default class Agent {
   private apiConnection: DeliverooApi;
   private frame: number = 0;
   private id: string;
-  private belifs: BelifsSet;
+  private beliefs: BeliefSet;
   private pddlPlanner: PddlPlanner;
   private lastTimestampUpdate: Timestamp | null = null;
   private plan: Queue<Intent> = new Queue<Intent>();
@@ -37,7 +37,7 @@ export default class Agent {
   private moveFailCount: number = 0;
   private currentScore: number = 0;
   private stopped: boolean = false;
-  private belifsChecksum: string = "";
+  private beliefsChecksum: string = "";
 
   onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -45,7 +45,7 @@ export default class Agent {
     tiles,
   ) => {
     info(`Map update event: ${width}x${height}`, this.id);
-    this.belifs.updateMap(width, height, tiles);
+    this.beliefs.updateMap(width, height, tiles);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,12 +68,12 @@ export default class Agent {
           agentType: "svejaMacachi",
         } as Message);
         info(`Adding known agent ${senderId}`, this.id);
-        this.belifs.addKnownGroupAgent(senderId);
+        this.beliefs.addKnownGroupAgent(senderId);
         break;
       }
       case "handshake-ack": {
         info(`Adding known agent ${senderId}`, this.id);
-        this.belifs.addKnownGroupAgent(senderId);
+        this.beliefs.addKnownGroupAgent(senderId);
         break;
       }
     }
@@ -89,7 +89,7 @@ export default class Agent {
 
   onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    const somethingChanged = this.belifs.updateParcels(parcels);
+    const somethingChanged = this.beliefs.updateParcels(parcels);
     if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Intent>();
@@ -99,9 +99,9 @@ export default class Agent {
   onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
     const newAgents = agents.filter(
-      (a) => a.id !== this.id && !this.belifs.getKnwonAgentsIds().has(a.id),
+      (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
     );
-    this.belifs.updateAgents(agents);
+    this.beliefs.updateAgents(agents);
     for (const agent of newAgents) {
       info(`Sending handshake to agent ${agent.id}`, this.id);
       this.apiConnection.emitSay(agent.id, {
@@ -129,7 +129,10 @@ export default class Agent {
     if (this.moveFailCount >= config.maxMoveFailCount) {
       agent.x = Math.floor(agent.x);
       agent.y = Math.floor(agent.y);
-      this.belifs.updatePos({ x: Math.floor(agent.x), y: Math.floor(agent.y) });
+      this.beliefs.updatePos({
+        x: Math.floor(agent.x),
+        y: Math.floor(agent.y),
+      });
       this.moveFailCount = 0;
       warn(
         `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
@@ -164,11 +167,11 @@ export default class Agent {
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
     this.apiConnection.onYou(this.onYou);
 
-    this.belifs = new BelifsSet(me.id, map, {
+    this.beliefs = new BeliefSet(me.id, map, {
       x: Math.floor(me.x),
       y: Math.floor(me.y),
     });
-    this.pddlPlanner = new PddlPlanner(me.id, this.belifs);
+    this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
@@ -190,7 +193,7 @@ export default class Agent {
     this.apiConnection.connect();
 
     info(
-      `Agent started at position (${this.belifs.getPos().x}, ${this.belifs.getPos().y})`,
+      `Agent started at position (${this.beliefs.getPos().x}, ${this.beliefs.getPos().y})`,
       this.id,
     );
 
@@ -232,13 +235,13 @@ export default class Agent {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
 
-    const belifsChecksum = this.belifs.getChecksumOfBelifs(
+    const beliefsChecksum = this.beliefs.getChecksumOfBeliefs(
       this.currentOperationMode,
     );
-    if (belifsChecksum != this.belifsChecksum) {
-      debug(`Belifs checksum before: ${this.belifsChecksum}`, this.id);
-      debug(`Belifs checksum after: ${belifsChecksum}`, this.id);
-      this.belifsChecksum = belifsChecksum;
+    if (beliefsChecksum != this.beliefsChecksum) {
+      debug(`Beliefs checksum before: ${this.beliefsChecksum}`, this.id);
+      debug(`Beliefs checksum after: ${beliefsChecksum}`, this.id);
+      this.beliefsChecksum = beliefsChecksum;
       info(`Beliefs changed, clearing plan`, this.id);
 
       this.plan = new Queue<Intent>();
@@ -283,7 +286,7 @@ export default class Agent {
   async executeIntent(intent: Intent): Promise<boolean> {
     debug(`Executing intent: ${Intent[intent]}`, this.id);
 
-    const pos = this.belifs.getPos();
+    const pos = this.beliefs.getPos();
 
     switch (intent) {
       case Intent.MOVE_UP:
@@ -325,7 +328,7 @@ export default class Agent {
       this.moveFailCount += 1;
       return false;
     }
-    this.belifs.updatePos(expected);
+    this.beliefs.updatePos(expected);
     return true;
   }
 
@@ -333,11 +336,11 @@ export default class Agent {
     const result = await this.apiConnection.emitPickup();
     if (result.length === 0) {
       error(`Pickup failed, no parcel picked up`, this.id);
-      this.belifs.pickupParcelFailedFromAction();
+      this.beliefs.pickupParcelFailedFromAction();
       return false;
     }
     for (const parcel of result) {
-      this.belifs.pickupParcel(parcel.id);
+      this.beliefs.pickupParcel(parcel.id);
     }
     return true;
   }
@@ -347,17 +350,17 @@ export default class Agent {
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
       // Remove all parcels that we thought were deliverable, since they are not
-      this.belifs.clearParcels();
+      this.beliefs.clearParcels();
       return false;
     }
     for (const parcel of result) {
-      this.belifs.deliverParcel(parcel.id);
+      this.beliefs.deliverParcel(parcel.id);
     }
     return true;
   }
 
   async generateIntents(): Promise<Queue<Intent>> {
-    if (this.belifs.getParcels().length === 0) {
+    if (this.beliefs.getParcels().length === 0) {
       this.currentOperationMode = CurrentOperationMode.HUNTING;
       debug("Set HUNTING mode", this.id);
     } else {
@@ -368,19 +371,19 @@ export default class Agent {
     switch (this.currentOperationMode) {
       case CurrentOperationMode.HUNTING: {
         info(`Planning in HUNTING mode`, this.id);
-        return this.belifs.getHuntingMovePlan();
+        return this.beliefs.getHuntingMovePlan();
       }
       case CurrentOperationMode.PLANNER: {
         info(`Planning in Planner mode`, this.id);
         const plan =
           config.planner === "pddl"
             ? await this.pddlPlanner.solvePddlProblem()
-            : this.belifs.getSmartPlan();
+            : this.beliefs.getSmartPlan();
 
         if (plan === null) {
           warn(`Planner planning failed, switching to HUNTING mode`, this.id);
           this.currentOperationMode = CurrentOperationMode.HUNTING;
-          return this.belifs.getHuntingMovePlan();
+          return this.beliefs.getHuntingMovePlan();
         } else {
           return plan;
         }

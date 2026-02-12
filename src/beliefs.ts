@@ -7,7 +7,7 @@ import config from "config";
 import crypto from "crypto";
 import { Queue } from "queue-typed";
 import { PriorityQueue } from "priority-queue-typescript";
-import { Intent, CurrentOperationMode } from "./itents";
+import { Intent, CurrentOperationMode } from "./intents";
 import { debug, info, error } from "src/utils/log";
 
 export enum TileType {
@@ -27,7 +27,7 @@ type SpawnableTiles = {
   checkedCount: number;
 };
 
-export class BelifsSet {
+export class BeliefSet {
   private id: string;
   private pos: Position;
   private map: TileType[][];
@@ -49,7 +49,7 @@ export class BelifsSet {
     pos: Position,
   ) {
     this.id = id;
-    this.map = BelifsSet.convertMap(map);
+    this.map = BeliefSet.convertMap(map);
 
     // precalculate deplivery tiles
     this.deliveryTiles = this.map
@@ -80,7 +80,7 @@ export class BelifsSet {
   }
 
   updateMap(width: number, height: number, tiles: Tile[]): void {
-    this.map = BelifsSet.convertMap({ width, height, tiles });
+    this.map = BeliefSet.convertMap({ width, height, tiles });
     this.mapVersion += 1;
     this.agents = [];
     this.parcels = [];
@@ -121,7 +121,7 @@ export class BelifsSet {
     );
   }
 
-  getChecksumOfBelifs(operationMode: CurrentOperationMode): string {
+  getChecksumOfBeliefs(operationMode: CurrentOperationMode): string {
     const parcelsStr = this.parcels
       .map((p) => {
         let carriedBy = p.carriedBy ?? "null";

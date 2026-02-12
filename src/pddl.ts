@@ -2,14 +2,14 @@ import config from "config";
 import fs from "fs";
 import path from "path";
 import { Queue } from "queue-typed";
-import { BelifsSet, TileType } from "src/belifs";
-import { Intent } from "src/itents";
+import { BeliefSet, TileType } from "src/beliefs";
+import { Intent } from "src/intents";
 import { debug, error, info } from "src/utils/log";
 import { fileURLToPath } from "url";
 
 export class PddlPlanner {
   private agentId: string;
-  private belifsSet: BelifsSet;
+  private beliefSet: BeliefSet;
   private static_objects: string[] = [];
   private staticInit: string[] = [];
   private dynamicObjects: string[] = [];
@@ -17,16 +17,16 @@ export class PddlPlanner {
   private goal: string = "";
   private id: string | null = null;
 
-  constructor(agentId: string, belifsSet: BelifsSet) {
+  constructor(agentId: string, beliefSet: BeliefSet) {
     this.agentId = agentId;
-    this.belifsSet = belifsSet;
+    this.beliefSet = beliefSet;
   }
 
   static async build(
     agentId: string,
-    belifsSet: BelifsSet,
+    beliefSet: BeliefSet,
   ): Promise<PddlPlanner> {
-    const planner = new PddlPlanner(agentId, belifsSet);
+    const planner = new PddlPlanner(agentId, beliefSet);
 
     info("PddlExecutor initialized", agentId);
 
@@ -34,7 +34,7 @@ export class PddlPlanner {
   }
 
   private getStaticObjectsAndInit(): [string[], string[]] {
-    const map = this.belifsSet.getMap();
+    const map = this.beliefSet.getMap();
 
     const objects = ["agent1 - agent"];
     const init = [];
@@ -79,12 +79,12 @@ export class PddlPlanner {
   }
 
   private getDynamicObjectsAndInitAndGoal(): [string[], string[], string] {
-    const parcels = this.belifsSet.getParcels();
-    const agents = this.belifsSet
+    const parcels = this.beliefSet.getParcels();
+    const agents = this.beliefSet
       .getAgents()
       .filter((a) => a.id !== this.agentId);
 
-    const pos = this.belifsSet.getPos();
+    const pos = this.beliefSet.getPos();
 
     const objects = [];
     const init = [];
