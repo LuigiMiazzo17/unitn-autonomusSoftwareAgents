@@ -8,10 +8,13 @@ import {
 import config from "config";
 import { BeliefSet, Position } from "src/beliefs";
 import { debug, info, warn, error } from "src/utils/log";
-import { PddlPlanner } from "src/pddl";
 import { Action, Intention } from "src/intents";
 import { IntentionSelector } from "src/intentions";
-import { generateSmartPlan, generateHuntingPlan } from "src/plan";
+import {
+  PddlPlanner,
+  generateSmartPlan,
+  generateHuntingPlan,
+} from "src/planning";
 import { Queue } from "queue-typed";
 
 const FRAME_ADVANCE_INTERVAL = 100;
