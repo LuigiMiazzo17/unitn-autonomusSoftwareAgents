@@ -1,0 +1,58 @@
+name: report
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "report/**"
+      - ".github/workflows/report.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    container: texlive/texlive:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            report
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: report/package-lock.json
+
+      - name: Setup LaTeX dependencies and run tests
+        working-directory: report
+        run: |
+          npm ci
+          npm run check
+          npm run build
+
+      - name: Compute release metadata
+        shell: bash
+        run: |
+          BUILD_DATE="$(date -u +'%Y-%m-%d')"
+          {
+            echo "BUILD_DATE=$BUILD_DATE"
+            echo "RELEASE_TAG=report-$BUILD_DATE"
+            echo "RELEASE_TITLE=Report ($BUILD_DATE)"
+          } >> "$GITHUB_ENV"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TITLE }}
+          files: |
+            report/sveja_macachi_miazzo_bevilacqua_report.pdf
