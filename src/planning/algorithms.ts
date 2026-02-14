@@ -1,13 +1,12 @@
-import { Agent as DeliverooAgentType } from "@unitn-asa/deliveroo-js-client";
 import { PriorityQueue } from "priority-queue-typescript";
 import { Action } from "src/intents";
-import { TileType, Position } from "src/beliefs";
+import { TileType, Position, ExternalAgent } from "src/beliefs";
 import { error } from "src/utils/log";
 import { normalizePos, hasValidMap, isInsideMap } from "./utils";
 
 export function computeDistanceVector(
   map: TileType[][],
-  agents: DeliverooAgentType[],
+  agents: ExternalAgent[],
   selfId: string,
   start: Position,
 ): [number[][], (Position | null)[][]] {
@@ -144,7 +143,7 @@ export function getPathFromDistances(
 
 export function dijkstra(
   map: TileType[][],
-  agents: DeliverooAgentType[],
+  agents: ExternalAgent[],
   selfId: string,
   start: Position,
   goal: Position,
@@ -167,7 +166,7 @@ export function dijkstra(
 
 export function getDistanceVectorAndPrevious(
   map: TileType[][],
-  agents: DeliverooAgentType[],
+  agents: ExternalAgent[],
   selfId: string,
   pos: Position,
 ): [number[][], (Position | null)[][]] {

@@ -1,5 +1,5 @@
 import {
-  Agent as DeliverooAgentType,
+  AgentFromUpdate as DeliverooAgentFromUpdate,
   Parcel as DeliverooParcelType,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
@@ -23,81 +23,47 @@ export type SpawnableTiles = {
   checkedCount: number;
 };
 
-export class BeliefSet {
-  private id: string;
-  private pos: Position;
-  private map: TileType[][] = [];
-  private mapVersion: number = 0;
-  private deliveryTiles: Position[] = [];
-  private parcels: DeliverooParcelType[] = [];
-  private agents: DeliverooAgentType[] = [];
-  private carryingParcels: Set<string> = new Set<string>();
-  private spawnableTiles: SpawnableTiles[] = [];
-  private knownGroupAgents: Set<string> = new Set<string>();
+export type ExternalAgent = {
+  id: string;
+  x: number;
+  y: number;
+  carrying: string[];
+};
 
-  private normalizePos(pos: Position): Position {
+export class BeliefSetWithoutMap {
+  protected id: string;
+  protected pos: Position;
+  protected parcels: DeliverooParcelType[] = [];
+  protected agents: ExternalAgent[] = [];
+  protected carryingParcels: Set<string> = new Set<string>();
+
+  protected normalizePos(pos: Position): Position {
     return { x: Math.floor(pos.x), y: Math.floor(pos.y) };
   }
 
-  constructor(
-    id: string,
-    unserialized_map: { width: number; height: number; tiles: Tile[] },
-    pos: Position,
-  ) {
+  constructor(id: string, pos: Position) {
     this.id = id;
-    const map = BeliefSet.convertMap(unserialized_map);
-    this.updateMap(map);
     this.pos = this.normalizePos(pos);
   }
 
-  updatePos(pos: Position): void {
-    this.pos = this.normalizePos(pos);
+  getId(): string {
+    return this.id;
   }
 
   getPos(): Position {
     return this.pos;
   }
 
-  updateMap(map: TileType[][]): void {
-    this.map = map;
-    this.mapVersion += 1;
-    this.agents = [];
-    this.parcels = [];
-    this.deliveryTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => pos as Position),
-      )
-      .flat();
-    this.spawnableTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
-      )
-      .flat() as SpawnableTiles[];
+  updatePos(pos: Position): void {
+    this.pos = this.normalizePos(pos);
   }
 
-  getMap(): TileType[][] {
-    return this.map;
+  getAgents(): ExternalAgent[] {
+    return this.agents;
   }
 
-  private hasValidMap(): boolean {
-    return this.map.length > 0 && this.map[0].length > 0;
-  }
-
-  private isInsideMap(pos: Position): boolean {
-    if (!this.hasValidMap()) return false;
-    const norm = this.normalizePos(pos);
-    return (
-      norm.x >= 0 &&
-      norm.x < this.map[0].length &&
-      norm.y >= 0 &&
-      norm.y < this.map.length
-    );
+  getCarryingParcels(): Set<string> {
+    return this.carryingParcels;
   }
 
   getChecksumOfBeliefs(): string {
@@ -123,11 +89,10 @@ export class BeliefSet {
   }
 
   getKnwonAgentsIds(): Set<string> {
-    return this.knownGroupAgents;
-  }
-
-  addKnownGroupAgent(agentId: string): void {
-    this.knownGroupAgents.add(agentId);
+    return this.agents.reduce(
+      (set, agent) => set.add(agent.id),
+      new Set<string>(),
+    );
   }
 
   updateParcels(parcels: DeliverooParcelType[]): boolean {
@@ -136,6 +101,8 @@ export class BeliefSet {
       const index = this.parcels.findIndex((p) => p.id === parcel.id);
       if (index !== -1) {
         this.parcels[index] = parcel;
+
+        // we discover that the parcel is now being carried by us
         if (parcel.carriedBy && !this.carryingParcels.has(parcel.id)) {
           this.carryingParcels.add(parcel.id);
           debug(
@@ -150,7 +117,6 @@ export class BeliefSet {
         somethingChanged = true;
       }
     }
-
     const parcelIds = parcels.map((p) => p.id);
     for (const parcelId of this.carryingParcels) {
       if (!parcelIds.includes(parcelId)) {
@@ -193,40 +159,31 @@ export class BeliefSet {
     }
   }
 
-  deliverParcel(parcelId: string): void {
-    if (this.carryingParcels.has(parcelId)) {
-      this.carryingParcels.delete(parcelId);
-      debug(`Delivered parcel ${parcelId}`, this.id);
-    } else {
-      debug(`Cannot deliver parcel ${parcelId} - not carrying it`, this.id);
-    }
-
-    if (this.isOnDeliveryTile()) {
-      this.parcels = this.parcels.filter((p) => p.id !== parcelId);
-      debug(`Removed parcel ${parcelId} from parcels list`, this.id);
-    }
-  }
-
   clearParcels(): void {
     this.carryingParcels.clear();
     debug(`Cleared carrying parcels`, this.id);
   }
 
-  updateAgents(agents: DeliverooAgentType[]): void {
+  updateAgents(agents: DeliverooAgentFromUpdate[]): void {
     for (const agent of agents) {
       const index = this.agents.findIndex((a) => a.id === agent.id);
       if (index !== -1) {
-        this.agents[index] = agent;
+        let externalAgent = this.agents[index];
+        externalAgent.x = Math.floor(agent.x);
+        externalAgent.y = Math.floor(agent.y);
+        this.agents[index] = externalAgent; // is this necessary? externalAgent is a reference to the object in the array, but let's be safe
       } else {
-        this.agents.push(agent);
+        const externalAgent: ExternalAgent = {
+          id: agent.id,
+          x: Math.floor(agent.x),
+          y: Math.floor(agent.y),
+          carrying: [],
+        };
+        this.agents.push(externalAgent);
       }
     }
 
     debug(`Updated agents: ${this.agents.length}`, this.id);
-  }
-
-  getAgents(): DeliverooAgentType[] {
-    return this.agents;
   }
 
   isPickupAvailable(): boolean {
@@ -240,6 +197,74 @@ export class BeliefSet {
       }
     }
     return false;
+  }
+}
+
+export class BeliefSet extends BeliefSetWithoutMap {
+  private map: TileType[][] = [];
+  private mapVersion: number = 0;
+  private deliveryTiles: Position[] = [];
+  private spawnableTiles: SpawnableTiles[] = [];
+
+  constructor(
+    id: string,
+    unserialized_map: { width: number; height: number; tiles: Tile[] },
+    pos: Position,
+  ) {
+    super(id, pos);
+    const map = BeliefSet.convertMap(unserialized_map);
+    this.updateMap(map);
+    this.pos = this.normalizePos(pos);
+  }
+
+  getMap(): TileType[][] {
+    return this.map;
+  }
+
+  updateMap(map: TileType[][]): void {
+    this.map = map;
+    this.mapVersion += 1;
+    this.agents = [];
+    this.parcels = [];
+    this.deliveryTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => pos as Position),
+      )
+      .flat();
+    this.spawnableTiles = this.map
+      .map((row, y) =>
+        row
+          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
+          .filter((pos) => pos !== null)
+          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
+      )
+      .flat() as SpawnableTiles[];
+  }
+
+  getDeliveryTiles(): Position[] {
+    return this.deliveryTiles;
+  }
+
+  getSpawnableTiles(): SpawnableTiles[] {
+    return this.spawnableTiles;
+  }
+
+  private hasValidMap(): boolean {
+    return this.map.length > 0 && this.map[0].length > 0;
+  }
+
+  private isInsideMap(pos: Position): boolean {
+    if (!this.hasValidMap()) return false;
+    const norm = this.normalizePos(pos);
+    return (
+      norm.x >= 0 &&
+      norm.x < this.map[0].length &&
+      norm.y >= 0 &&
+      norm.y < this.map.length
+    );
   }
 
   isDeliveryAvailable(): boolean {
@@ -259,20 +284,18 @@ export class BeliefSet {
     return false;
   }
 
-  getId(): string {
-    return this.id;
-  }
+  deliverParcel(parcelId: string): void {
+    if (this.carryingParcels.has(parcelId)) {
+      this.carryingParcels.delete(parcelId);
+      debug(`Delivered parcel ${parcelId}`, this.id);
+    } else {
+      debug(`Cannot deliver parcel ${parcelId} - not carrying it`, this.id);
+    }
 
-  getCarryingParcels(): Set<string> {
-    return this.carryingParcels;
-  }
-
-  getDeliveryTiles(): Position[] {
-    return this.deliveryTiles;
-  }
-
-  getSpawnableTiles(): SpawnableTiles[] {
-    return this.spawnableTiles;
+    if (this.isOnDeliveryTile()) {
+      this.parcels = this.parcels.filter((p) => p.id !== parcelId);
+      debug(`Removed parcel ${parcelId} from parcels list`, this.id);
+    }
   }
 
   static convertMap(m: {
@@ -299,5 +322,36 @@ export class BeliefSet {
     }
 
     return map;
+  }
+}
+
+export class BeliefSetWithoutMapFactory {
+  static fromObject(obj: any): BeliefSetWithoutMap {
+    // this is used in message passing, so map, deliveryTiles and spawnableTiles
+    // are not included in the message because each agent has the same thing
+
+    if (typeof obj.id !== "string") {
+      throw new Error("Invalid belief set: id should be a string");
+    }
+    if (typeof obj.pos !== "object") {
+      throw new Error("Invalid belief set: pos should be an object");
+    }
+    if (typeof obj.pos.x !== "number" || typeof obj.pos.y !== "number") {
+      throw new Error("Invalid belief set: pos should have numeric x and y");
+    }
+    if (!Array.isArray(obj.parcels)) {
+      throw new Error("Invalid belief set: parcels should be an array");
+    }
+    if (!Array.isArray(obj.agents)) {
+      throw new Error("Invalid belief set: agents should be an array");
+    }
+
+    const beliefSet = new BeliefSetWithoutMap(obj.id, {
+      x: Math.floor(obj.pos.x),
+      y: Math.floor(obj.pos.y),
+    });
+    beliefSet.updateParcels(obj.parcels);
+    beliefSet.updateAgents(obj.agents);
+    return beliefSet;
   }
 }

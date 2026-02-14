@@ -1,32 +1,28 @@
 import {
+  AgentFromUpdate as DeliverooAgentFromUpdate,
   Agent as DeliverooAgentType,
   DeliverooApi,
+  Parcel,
   Tile,
   Timestamp,
-  Parcel,
 } from "@unitn-asa/deliveroo-js-client";
+import { Mutex } from "async-mutex";
 import config from "config";
+import { Queue } from "queue-typed";
 import { BeliefSet, Position } from "src/beliefs";
-import { debug, info, warn, error } from "src/utils/log";
-import { Action, Intention } from "src/intents";
+import ConnectionManager from "src/coordination/connectionManager";
+import Message, { HandshakeMsg } from "src/coordination/message";
 import { IntentionSelector } from "src/intentions";
+import { Action, Intention } from "src/intents";
 import {
   PddlPlanner,
-  generateSmartPlan,
   generateHuntingPlan,
+  generateSmartPlan,
 } from "src/planning";
-import { Queue } from "queue-typed";
-
-const FRAME_ADVANCE_INTERVAL = 100;
+import { debug, error, info, warn } from "src/utils/log";
 
 export type AgentOptions = {
   token?: string | null;
-};
-
-type Message = {
-  type: "handshake" | "handshake-ack" | "parcels";
-  agentType: "svejaMacachi" | unknown;
-  [key: string]: unknown;
 };
 
 export default class Agent {
@@ -36,12 +32,16 @@ export default class Agent {
   private beliefs: BeliefSet;
   private pddlPlanner: PddlPlanner;
   private intentionSelector: IntentionSelector;
+  private connectionManager: ConnectionManager;
   private lastTimestampUpdate: Timestamp | null = null;
   private plan: Queue<Action> = new Queue<Action>();
   private moveFailCount: number = 0;
   private currentScore: number = 0;
   private stopped: boolean = false;
   private beliefsChecksum: string = "";
+  private agentSensingMutex: Mutex = new Mutex();
+
+  static readonly FRAME_ADVANCE_INTERVAL = 100;
 
   constructor(
     apiConnection: DeliverooApi,
@@ -58,6 +58,7 @@ export default class Agent {
     this.apiConnection.onParcelsSensing(this.onParcelSensing);
     this.apiConnection.onAgentsSensing(this.onAgentsSensing);
     this.apiConnection.onYou(this.onYou);
+    this.apiConnection.onDisconnect(this.onDisconnect);
 
     this.beliefs = new BeliefSet(me.id, map, {
       x: Math.floor(me.x),
@@ -65,17 +66,25 @@ export default class Agent {
     });
     this.intentionSelector = new IntentionSelector(me.id);
     this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
+    this.connectionManager = new ConnectionManager(this);
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
     const apiConnection = new DeliverooApi(config.host, options.token);
-
-    return new Agent(
+    const agent = new Agent(
       apiConnection,
       await apiConnection.me,
       await apiConnection.map,
     );
+    agent.connectionManager.start();
+
+    return agent;
   }
+
+  private onDisconnect: () => void = () => {
+    error(`Disconnected from server`, this.id);
+    this.stopped = true;
+  };
 
   private onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
@@ -90,31 +99,27 @@ export default class Agent {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onMsg: (senderId: string, _: unknown, msg: any) => void = (
     senderId,
-    _,
+    _, // unused agent name
     msg,
   ) => {
     info(`Received message: ${JSON.stringify(msg)}`, this.id);
 
-    if (!msg.agentType || msg.agentType !== "svejaMacachi") {
-      warn(`Ignoring message from unknown agent type`, this.id);
+    try {
+      msg = Message.fromObject(msg);
+    } catch (e) {
+      error(
+        `Failed to parse message: ${e instanceof Error ? e.message : String(e)}`,
+        this.id,
+      );
+      return;
     }
 
-    switch (msg.type) {
-      case "handshake": {
-        info(`Handshake received from agent ${senderId}`, this.id);
-        this.apiConnection.emitSay(senderId, {
-          type: "handshake-ack",
-          agentType: "svejaMacachi",
-        } as Message);
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
-      case "handshake-ack": {
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
+    if (msg.content instanceof HandshakeMsg) {
+      info(
+        `Handshake received from agent ${senderId}, adding to known agents`,
+        this.id,
+      );
+      this.connectionManager.handleReceivedHandshakeMsg(senderId);
     }
   };
 
@@ -138,21 +143,44 @@ export default class Agent {
     }
   };
 
-  private onAgentsSensing: (agents: DeliverooAgentType[]) => void = (
+  private onAgentsSensing: (agents: DeliverooAgentFromUpdate[]) => void = (
     agents,
   ) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
     const newAgents = agents.filter(
       (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
     );
-    this.beliefs.updateAgents(agents);
-    for (const agent of newAgents) {
-      info(`Sending handshake to agent ${agent.id}`, this.id);
-      this.apiConnection.emitSay(agent.id, {
-        type: "handshake",
-        agentType: "svejaMacachi",
-      } as Message);
-    }
+
+    // TODO: Update this for proximity sensing, not just from broadcast msg
+
+    // for (const agent of newAgents) {
+    //   info(`Sending handshake to agent ${agent.id}`, this.id);
+    //   console.log(`Sending handshake to agent ${agent.id} from ${this.id}`);
+    //   const handshakeMsg = new HandshakeMsg(
+    //     Array.from(this.beliefs.getKnwonAgentsIds()),
+    //   );
+    //
+    //   this.apiConnection.emitSay(
+    //     agent.id,
+    //     new Message("blabla", handshakeMsg),
+    //   );
+    //
+    //   // periodically and indefinetly send keep-alive messages to the newly discovered agent, to keep the connection alive and prevent it from disconnecting us
+    //   const sendKeepAlive: () => void = async () => {
+    //     while (true) {
+    //       if (this.stopped) {
+    //         return;
+    //       }
+    //
+    //       await new Promise((resolve) => setTimeout(resolve, 1000));
+    //
+    //       this.apiConnection.emitSay(agent.id, new KeepAliveMsg());
+    //     }
+    //   };
+    //   // sendKeepAlive();
+    // }
+    //
+    // this.beliefs.updateAgents(agents);
   };
 
   private onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
@@ -211,12 +239,12 @@ export default class Agent {
 
     while (!this.stopped) {
       const start = Date.now();
-      await this.nextFrame();
+      // await this.nextFrame();
 
       const elapsed = Date.now() - start;
-      if (elapsed < FRAME_ADVANCE_INTERVAL) {
+      if (elapsed < Agent.FRAME_ADVANCE_INTERVAL) {
         await new Promise((resolve) =>
-          setTimeout(resolve, FRAME_ADVANCE_INTERVAL - elapsed),
+          setTimeout(resolve, Agent.FRAME_ADVANCE_INTERVAL - elapsed),
         );
       }
 
@@ -232,6 +260,14 @@ export default class Agent {
     this.stopped = true;
   }
 
+  isStopped(): boolean {
+    return this.stopped;
+  }
+
+  getId(): string {
+    return this.id;
+  }
+
   getScore(): number {
     return this.currentScore;
   }
@@ -240,10 +276,20 @@ export default class Agent {
     return this.frame;
   }
 
+  getApi(): DeliverooApi {
+    return this.apiConnection;
+  }
+
+  getBeliefSet(): BeliefSet {
+    return this.beliefs;
+  }
+
   async nextFrame(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
+
+    // 0. Process if is multiagent mode TODO:
 
     // 1. Check if beliefs changed → invalidate current plan
     const beliefsChecksum = this.beliefs.getChecksumOfBeliefs();
