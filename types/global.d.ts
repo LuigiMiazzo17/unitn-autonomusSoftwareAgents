@@ -11,6 +11,15 @@ declare module "@unitn-asa/deliveroo-js-client" {
     penalty: number;
   }
 
+  export interface AgentFromUpdate {
+    id: string;
+    name: string;
+    x: number;
+    y: number;
+    score: number;
+    penalty: number;
+  }
+
   export interface Parcel {
     id: string;
     x: number;
@@ -131,7 +140,7 @@ declare module "@unitn-asa/deliveroo-js-client" {
     onAgentConnected(cb: (state: string, agent: any) => void): void;
     onYou(cb: (agent: Agent, ts: Timestamp) => void): void;
     onceYou(cb: (agent: Agent, ts: Timestamp) => void): void;
-    onAgentsSensing(cb: (agents: Agent[]) => void): void;
+    onAgentsSensing(cb: (agents: AgentFromUpdate[]) => void): void;
     onParcelsSensing(cb: (parcels: Parcel[]) => void): void;
     onMsg(
       cb: (
