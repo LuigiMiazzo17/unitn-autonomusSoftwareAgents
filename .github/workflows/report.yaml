@@ -3,7 +3,7 @@ name: report
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - "report/**"
       - ".github/workflows/report.yaml"
@@ -13,31 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  report:
+  generate-report:
     runs-on: ubuntu-latest
-    container: texlive/texlive:latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
           sparse-checkout: |
             report
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "npm"
-          cache-dependency-path: report/package-lock.json
+      - uses: typst-community/setup-typst@v4
 
-      - name: Setup LaTeX dependencies and run tests
-        working-directory: report
-        run: |
-          npm ci
-          npm run check
-          npm run build
+      - run: typst compile report/main.typ sveja_macachi_miazzo_bevilacqua_report.pdf
 
       - name: Compute release metadata
         shell: bash
@@ -55,4 +42,4 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TITLE }}
           files: |
-            report/sveja_macachi_miazzo_bevilacqua_report.pdf
+            sveja_macachi_miazzo_bevilacqua_report.pdf
