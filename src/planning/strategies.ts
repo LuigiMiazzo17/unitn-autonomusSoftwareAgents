@@ -5,9 +5,9 @@ import { BeliefSet, TileType, Position, Parcel } from "src/beliefs";
 import { debug, info, error } from "src/utils/log";
 import { hasValidMap, isInsideMap } from "./utils";
 import {
-  getDistanceVectorAndPrevious,
   getPathFromDistances,
   dijkstra,
+  computeDistanceVector,
 } from "./algorithms";
 
 export function getSortedClosestDeliveryTile(
@@ -26,7 +26,7 @@ export function getSortedClosestDeliveryTile(
     return [];
   }
 
-  const [distances] = getDistanceVectorAndPrevious(
+  const [distances] = computeDistanceVector(
     map,
     beliefs.getAllAgentsArray(),
     logId,
@@ -98,7 +98,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   }
 
   if (carryingParcels.size > 0) {
-    const [distances, previous] = getDistanceVectorAndPrevious(
+    const [distances, previous] = computeDistanceVector(
       map,
       agents,
       logId,
@@ -195,7 +195,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       continue;
     }
 
-    const [distances, previous] = getDistanceVectorAndPrevious(
+    const [distances, previous] = computeDistanceVector(
       map,
       agents,
       logId,

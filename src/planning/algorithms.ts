@@ -163,17 +163,3 @@ export function dijkstra(
   );
   return getPathFromDistances(map, distances, previous, goal, selfId);
 }
-
-export function getDistanceVectorAndPrevious(
-  map: TileType[][],
-  agents: ExternalAgent[],
-  selfId: string,
-  pos: Position,
-): [number[][], (Position | null)[][]] {
-  if (!isInsideMap(map, pos)) {
-    error(`Position out of bounds: (${pos.x}, ${pos.y})`, selfId);
-    return [[], []];
-  }
-
-  return computeDistanceVector(map, agents, selfId, pos);
-}
