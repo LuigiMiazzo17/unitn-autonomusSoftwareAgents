@@ -6,6 +6,7 @@ import {
 import config from "config";
 import crypto from "crypto";
 import { debug, error, info, warn } from "src/utils/log";
+import { isInsideMap } from "./planning";
 
 export enum TileType {
   WALL,
@@ -186,93 +187,6 @@ export class ReducedBeliefSet {
       .digest("hex");
   }
 
-  updateKnownParcelsFromParcelUpdate(
-    parcels: DeliverooParcelType[],
-  ): [boolean, Set<string>] {
-    let somethingChanged = false;
-    // TODO: Revise somethingChanged
-    const carryingParcels = this.getCarryingParcels();
-
-    for (const parcel of parcels) {
-      const optionalParcel = this.knownParcels.get(parcel.id);
-      if (optionalParcel) {
-        // We already knew about the parcel
-        optionalParcel.setPos({
-          x: Math.floor(parcel.x),
-          y: Math.floor(parcel.y),
-        });
-        optionalParcel.setCarriedBy(parcel.carriedBy);
-        optionalParcel.setReward(parcel.reward);
-        optionalParcel.setSeen();
-
-        // we discover that the parcel is now being carried by us
-        if (
-          parcel.carriedBy &&
-          parcel.carriedBy === this.id &&
-          !carryingParcels.has(parcel.id)
-        ) {
-          optionalParcel.setCarriedBy(this.id);
-
-          debug(
-            `Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`,
-            this.id,
-          );
-          somethingChanged = true;
-        }
-      } else {
-        // New parcel discovered
-        this.knownParcels.set(
-          parcel.id,
-          Parcel.FromDeliverooParcelUpdate(parcel),
-        );
-        if (parcel.carriedBy && parcel.carriedBy === this.id) {
-          error(
-            `Parcel ${parcel.id} is already carried by us but we didn't know about it, adding to carrying parcels`,
-          );
-        }
-        debug(`Discovered new parcel ${parcel.id}`, this.id);
-        somethingChanged = true;
-      }
-    }
-
-    // While transporting a parcel, if it expires drop it
-    const parcelIds = parcels.map((p) => p.id);
-    for (const parcelId of this.getCarryingParcels()) {
-      if (!parcelIds.includes(parcelId)) {
-        this.knownParcels.delete(parcelId);
-        debug(`Parcel ${parcelId} dropped`, this.id);
-        somethingChanged = true;
-      }
-    }
-
-    // Get all known parcelIds that are within parcel sensing range,
-    // if not present in the update, remove them because they are expired.
-    // Distance is not gemoetric, but the number of tiles between the agent and
-    // the parcel, considering also walls
-
-    const deletedParcelIds = new Set<string>();
-    for (const [parcelId, parcel] of this.knownParcels.entries()) {
-      const distance =
-        Math.abs(parcel.getPos().x - this.pos.x) +
-        Math.abs(parcel.getPos().y - this.pos.y);
-      if (
-        distance <= config.parcelSensingDistance &&
-        !parcelIds.includes(parcelId)
-      ) {
-        this.knownParcels.delete(parcelId);
-        deletedParcelIds.add(parcelId);
-        debug(
-          `Parcel ${parcelId} is within sensing range but not in the update, removing from known parcels`,
-          this.id,
-        );
-        somethingChanged = true;
-      }
-    }
-
-    debug(`Updated parcels: ${this.knownParcels.size}`, this.id);
-    return [somethingChanged, deletedParcelIds];
-  }
-
   updateKnownParcels(parcels: Map<string, Parcel>): void {
     this.knownParcels = parcels;
   }
@@ -422,7 +336,7 @@ export class ReducedBeliefSet {
       }
     }
 
-    // We don't want to remove group agents, because they are better handeld
+    // We don't want to remove group agents, because they are better handled
     // with the connection manager
 
     return [somethingHasChanged, deletedAgentIds];
@@ -785,6 +699,97 @@ export class BeliefSet extends ReducedBeliefSet {
     }
 
     return map;
+  }
+
+  updateKnownParcelsFromParcelUpdate(
+    parcels: DeliverooParcelType[],
+  ): [boolean, Set<string>] {
+    let somethingChanged = false;
+    // TODO: Revise somethingChanged
+    const carryingParcels = this.getCarryingParcels();
+
+    for (const parcel of parcels) {
+      if (!isInsideMap(this.map, parcel)) {
+        error(`Position of parcel out of bounds: (${parcel.x}, ${parcel.y})`);
+        continue;
+      }
+      const optionalParcel = this.knownParcels.get(parcel.id);
+      if (optionalParcel) {
+        // We already knew about the parcel
+        optionalParcel.setPos({
+          x: Math.floor(parcel.x),
+          y: Math.floor(parcel.y),
+        });
+        optionalParcel.setCarriedBy(parcel.carriedBy);
+        optionalParcel.setReward(parcel.reward);
+        optionalParcel.setSeen();
+
+        // we discover that the parcel is now being carried by us
+        if (
+          parcel.carriedBy &&
+          parcel.carriedBy === this.id &&
+          !carryingParcels.has(parcel.id)
+        ) {
+          optionalParcel.setCarriedBy(this.id);
+
+          debug(
+            `Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`,
+            this.id,
+          );
+          somethingChanged = true;
+        }
+      } else {
+        // New parcel discovered
+        this.knownParcels.set(
+          parcel.id,
+          Parcel.FromDeliverooParcelUpdate(parcel),
+        );
+        if (parcel.carriedBy && parcel.carriedBy === this.id) {
+          error(
+            `Parcel ${parcel.id} is already carried by us but we didn't know about it, adding to carrying parcels`,
+          );
+        }
+        debug(`Discovered new parcel ${parcel.id}`, this.id);
+        somethingChanged = true;
+      }
+    }
+
+    // While transporting a parcel, if it expires drop it
+    const parcelIds = parcels.map((p) => p.id);
+    for (const parcelId of this.getCarryingParcels()) {
+      if (!parcelIds.includes(parcelId)) {
+        this.knownParcels.delete(parcelId);
+        debug(`Parcel ${parcelId} dropped`, this.id);
+        somethingChanged = true;
+      }
+    }
+
+    // Get all known parcelIds that are within parcel sensing range,
+    // if not present in the update, remove them because they are expired.
+    // Distance is not gemoetric, but the number of tiles between the agent and
+    // the parcel, considering also walls
+
+    const deletedParcelIds = new Set<string>();
+    for (const [parcelId, parcel] of this.knownParcels.entries()) {
+      const distance =
+        Math.abs(parcel.getPos().x - this.pos.x) +
+        Math.abs(parcel.getPos().y - this.pos.y);
+      if (
+        distance <= config.parcelSensingDistance &&
+        !parcelIds.includes(parcelId)
+      ) {
+        this.knownParcels.delete(parcelId);
+        deletedParcelIds.add(parcelId);
+        debug(
+          `Parcel ${parcelId} is within sensing range but not in the update, removing from known parcels`,
+          this.id,
+        );
+        somethingChanged = true;
+      }
+    }
+
+    debug(`Updated parcels: ${this.knownParcels.size}`, this.id);
+    return [somethingChanged, deletedParcelIds];
   }
 }
 

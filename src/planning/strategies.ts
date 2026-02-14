@@ -3,7 +3,6 @@ import { Queue } from "queue-typed";
 import { Action } from "src/intents";
 import { BeliefSet, TileType, Position, Parcel } from "src/beliefs";
 import { debug, info, error } from "src/utils/log";
-import { hasValidMap, isInsideMap } from "./utils";
 import {
   getPathFromDistances,
   dijkstra,
@@ -16,15 +15,6 @@ export function getSortedClosestDeliveryTile(
 ): Position[] {
   const map = beliefs.getMap();
   const logId = beliefs.getId();
-
-  if (!hasValidMap(map)) {
-    error("Map not initialized, cannot compute delivery tiles", logId);
-    return [];
-  }
-  if (!isInsideMap(map, pos)) {
-    error(`Position out of bounds: (${pos.x}, ${pos.y})`, logId);
-    return [];
-  }
 
   const [distances] = computeDistanceVector(
     map,
@@ -65,21 +55,8 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   const deliveryTiles = beliefs.getDeliveryTiles();
   const agents = beliefs.getAllAgentsArray();
 
-  if (!hasValidMap(map)) {
-    error("Map not initialized, cannot plan", logId);
-    return null;
-  }
-  if (!isInsideMap(map, pos)) {
-    error(`Position out of bounds: (${pos.x}, ${pos.y})`, logId);
-    return null;
-  }
-
   const parcelsToPickup = [...parcels.entries()]
-    .filter(
-      ([_, p]) =>
-        !p.getCarriedBy() &&
-        isInsideMap(map, { x: p.getPos().x, y: p.getPos().y }),
-    )
+    .filter(([_, p]) => !p.getCarriedBy())
     .map(([_, p]) => p);
 
   if (parcelsToPickup.length === 0 && carryingParcels.size === 0) {
@@ -139,7 +116,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
           nearestParcelDist)
     ) {
       const pathToDelivery = getPathFromDistances(
-        map,
         distances,
         previous,
         reachableDeliveryTiles[0],
@@ -230,7 +206,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     for (let i = 0; i < toPickupCount; i++) {
       const parcel = reachableToPickup[i];
       const pathToParcel = getPathFromDistances(
-        map,
         distances,
         previous,
         { x: parcel.getPos().x, y: parcel.getPos().y },
@@ -266,7 +241,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       while (sortedDeliveryTiles.length > 0) {
         const closestDeliveryTile = sortedDeliveryTiles.shift()!;
         const pathToDelivery = getPathFromDistances(
-          map,
           distances,
           previous,
           closestDeliveryTile,
@@ -318,12 +292,6 @@ export function generateHuntingPlan(
   const logId = beliefs.getId();
   const agents = beliefs.getAllAgentsArray();
   const queue = new Queue<Action>();
-
-  if (!hasValidMap(map)) {
-    error("Map not initialized, cannot plan", logId);
-    queue.push(Action.NOOP);
-    return queue;
-  }
 
   if (beliefs.isPickupAvailable()) {
     queue.push(Action.PICKUP);

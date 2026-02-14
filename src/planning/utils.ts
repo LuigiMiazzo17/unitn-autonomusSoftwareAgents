@@ -12,9 +12,6 @@ export function isInsideMap(map: TileType[][], pos: Position): boolean {
   if (!hasValidMap(map)) return false;
   const norm = normalizePos(pos);
   return (
-    norm.x >= 0 &&
-    norm.x < map[0].length &&
-    norm.y >= 0 &&
-    norm.y < map.length
+    norm.x >= 0 && norm.x < map[0].length && norm.y >= 0 && norm.y < map.length
   );
 }

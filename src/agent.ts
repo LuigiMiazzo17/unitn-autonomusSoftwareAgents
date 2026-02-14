@@ -21,6 +21,7 @@ import {
   PddlPlanner,
   generateHuntingPlan,
   generateSmartPlan,
+  isInsideMap,
 } from "src/planning";
 import { debug, error, info, warn } from "src/utils/log";
 
@@ -298,6 +299,12 @@ export default class Agent {
   async nextFrame(): Promise<void> {
     if (this.frame % 100 === 0) {
       debug(`Frame advanced to ${this.frame}`, this.id);
+    }
+    const map = this.beliefs.getMap();
+    const pos = this.beliefs.getPos();
+    if (!isInsideMap(map, pos)) {
+      error(`Position of agent out of bounds: (${pos.x}, ${pos.y})`);
+      return;
     }
 
     // 0. Process if is multiagent mode TODO:

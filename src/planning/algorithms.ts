@@ -2,7 +2,7 @@ import { PriorityQueue } from "priority-queue-typescript";
 import { Action } from "src/intents";
 import { TileType, Position, ExternalAgent } from "src/beliefs";
 import { error } from "src/utils/log";
-import { normalizePos, hasValidMap, isInsideMap } from "./utils";
+import { normalizePos } from "./utils";
 
 export function computeDistanceVector(
   map: TileType[][],
@@ -11,18 +11,6 @@ export function computeDistanceVector(
   start: Position,
 ): [number[][], (Position | null)[][]] {
   const startPos = normalizePos(start);
-
-  if (!hasValidMap(map)) {
-    error("Map not initialized, cannot compute distances", selfId);
-    return [[], []];
-  }
-  if (!isInsideMap(map, startPos)) {
-    error(
-      `Start position out of bounds: (${startPos.x}, ${startPos.y})`,
-      selfId,
-    );
-    return [[], []];
-  }
 
   const rows = map.length;
   const cols = map[0].length;
@@ -90,22 +78,13 @@ export function computeDistanceVector(
 }
 
 export function getPathFromDistances(
-  map: TileType[][],
   distances: number[][],
   previous: (Position | null)[][],
   goal: Position,
   logId?: string,
 ): Action[] | null {
-  if (!hasValidMap(map)) {
-    error("Map not initialized, cannot compute path", logId);
-    return null;
-  }
   if (!distances || distances.length === 0 || distances[0].length === 0) {
     error("Distances not computed, cannot compute path", logId);
-    return null;
-  }
-  if (!isInsideMap(map, goal)) {
-    error(`Goal out of bounds: (${goal.x}, ${goal.y})`, logId);
     return null;
   }
   if (distances[goal.y][goal.x] === Infinity) {
@@ -148,18 +127,11 @@ export function dijkstra(
   start: Position,
   goal: Position,
 ): Action[] | null {
-  if (!isInsideMap(map, start) || !isInsideMap(map, goal)) {
-    error(
-      `Dijkstra positions out of bounds: (${start.x}, ${start.y}) -> (${goal.x}, ${goal.y})`,
-      selfId,
-    );
-    return null;
-  }
   const [distances, previous] = computeDistanceVector(
     map,
     agents,
     selfId,
     start,
   );
-  return getPathFromDistances(map, distances, previous, goal, selfId);
+  return getPathFromDistances(distances, previous, goal, selfId);
 }
