@@ -4,10 +4,9 @@ import { TileType, Position, ExternalAgent } from "src/beliefs";
 import { error } from "src/utils/log";
 import { normalizePos } from "./utils";
 
-export function computeDistanceVector(
+export function computeDistanceVectors(
   map: TileType[][],
   agents: ExternalAgent[],
-  selfId: string,
   start: Position,
 ): [number[][], (Position | null)[][]] {
   const startPos = normalizePos(start);
@@ -55,15 +54,12 @@ export function computeDistanceVector(
         nx < cols &&
         ny >= 0 &&
         ny < rows &&
-        map[ny][nx] !== TileType.WALL
+        map[ny][nx] !== TileType.WALL &&
+        !agents.some(
+          (a) =>
+            Math.floor(a.getPos().x) === nx && Math.floor(a.getPos().y) === ny,
+        )
       ) {
-        if (
-          agents
-            .filter((a) => a.id !== selfId)
-            .some((a) => Math.floor(a.x) === nx && Math.floor(a.y) === ny)
-        ) {
-          continue;
-        }
         const alt = distances[y][x] + 1;
         if (alt < distances[ny][nx]) {
           distances[ny][nx] = alt;
@@ -81,14 +77,13 @@ export function getPathFromDistances(
   distances: number[][],
   previous: (Position | null)[][],
   goal: Position,
-  logId?: string,
 ): Action[] | null {
   if (!distances || distances.length === 0 || distances[0].length === 0) {
-    error("Distances not computed, cannot compute path", logId);
+    error("Distances not computed, cannot compute path");
     return null;
   }
   if (distances[goal.y][goal.x] === Infinity) {
-    error(`No path found to goal at (${goal.x}, ${goal.y})`, logId);
+    error(`No path found to goal at (${goal.x}, ${goal.y})`);
     return null;
   }
 
@@ -113,7 +108,7 @@ export function getPathFromDistances(
     } else if (to.x === from.x + 1 && to.y === from.y) {
       actions.push(Action.MOVE_RIGHT);
     } else {
-      error("Failed parsing dijkstra outcome", logId);
+      error("Failed parsing dijkstra outcome");
     }
   }
 
@@ -123,15 +118,9 @@ export function getPathFromDistances(
 export function dijkstra(
   map: TileType[][],
   agents: ExternalAgent[],
-  selfId: string,
   start: Position,
   goal: Position,
 ): Action[] | null {
-  const [distances, previous] = computeDistanceVector(
-    map,
-    agents,
-    selfId,
-    start,
-  );
-  return getPathFromDistances(distances, previous, goal, selfId);
+  const [distances, previous] = computeDistanceVectors(map, agents, start);
+  return getPathFromDistances(distances, previous, goal);
 }

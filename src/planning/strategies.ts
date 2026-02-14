@@ -6,20 +6,19 @@ import { debug, info, error } from "src/utils/log";
 import {
   getPathFromDistances,
   dijkstra,
-  computeDistanceVector,
+  computeDistanceVectors,
 } from "./algorithms";
 
-export function getSortedClosestDeliveryTile(
+export function getSortedClosestDeliveryTiles(
   beliefs: BeliefSet,
   pos: Position,
 ): Position[] {
   const map = beliefs.getMap();
   const logId = beliefs.getId();
 
-  const [distances] = computeDistanceVector(
+  const [distances] = computeDistanceVectors(
     map,
     beliefs.getAllAgentsArray(),
-    logId,
     pos,
   );
   if (!distances || distances.length === 0 || distances[0].length === 0) {
@@ -75,18 +74,13 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   }
 
   if (carryingParcels.size > 0) {
-    const [distances, previous] = computeDistanceVector(
-      map,
-      agents,
-      logId,
-      pos,
-    );
+    const [distances, previous] = computeDistanceVectors(map, agents, pos);
     if (!distances || distances.length === 0 || distances[0].length === 0) {
       error("Distances not computed, cannot compare delivery vs pickup", logId);
       return null;
     }
 
-    const sortedDeliveryTiles = getSortedClosestDeliveryTile(beliefs, pos);
+    const sortedDeliveryTiles = getSortedClosestDeliveryTiles(beliefs, pos);
     const reachableDeliveryTiles = sortedDeliveryTiles.filter((tile) => {
       const row = distances[tile.y];
       if (!row) return false;
@@ -119,7 +113,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
         distances,
         previous,
         reachableDeliveryTiles[0],
-        logId,
       );
       if (pathToDelivery !== null) {
         const queue = new Queue<Action>();
@@ -171,10 +164,9 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       continue;
     }
 
-    const [distances, previous] = computeDistanceVector(
+    const [distances, previous] = computeDistanceVectors(
       map,
       agents,
-      logId,
       current.pos,
     );
     if (!distances || distances.length === 0 || distances[0].length === 0) {
@@ -205,12 +197,10 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     );
     for (let i = 0; i < toPickupCount; i++) {
       const parcel = reachableToPickup[i];
-      const pathToParcel = getPathFromDistances(
-        distances,
-        previous,
-        { x: parcel.getPos().x, y: parcel.getPos().y },
-        logId,
-      );
+      const pathToParcel = getPathFromDistances(distances, previous, {
+        x: parcel.getPos().x,
+        y: parcel.getPos().y,
+      });
 
       if (pathToParcel !== null) {
         const newCarrying = new Set(current.carrying);
@@ -233,7 +223,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     }
 
     if (current.carrying.size !== 0) {
-      const sortedDeliveryTiles = getSortedClosestDeliveryTile(
+      const sortedDeliveryTiles = getSortedClosestDeliveryTiles(
         beliefs,
         current.pos,
       );
@@ -244,7 +234,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
           distances,
           previous,
           closestDeliveryTile,
-          logId,
         );
         if (pathToDelivery !== null) {
           queue.push({
@@ -289,7 +278,6 @@ export function generateHuntingPlan(
 ): Queue<Action> {
   const map = beliefs.getMap();
   const pos = beliefs.getPos();
-  const logId = beliefs.getId();
   const agents = beliefs.getAllAgentsArray();
   const queue = new Queue<Action>();
 
@@ -303,16 +291,13 @@ export function generateHuntingPlan(
     return queue;
   }
 
-  const pathToTarget = dijkstra(map, agents, logId, pos, targetPos);
+  const pathToTarget = dijkstra(map, agents, pos, targetPos);
   if (pathToTarget && pathToTarget.length > 0) {
     for (const action of pathToTarget) {
       queue.push(action);
     }
   } else {
-    error(
-      `No path found to target tile at (${targetPos.x}, ${targetPos.y})`,
-      logId,
-    );
+    error(`No path found to target tile at (${targetPos.x}, ${targetPos.y})`);
     queue.push(Action.NOOP);
   }
 
