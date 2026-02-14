@@ -8,7 +8,8 @@ import {
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
 import { Queue } from "queue-typed";
-import { BeliefSet, Position } from "src/beliefs";
+import { BeliefSet } from "src/beliefs";
+import { Position } from "src/beliefs/types";
 import ConnectionManager from "src/coordination/connectionManager";
 import Message, {
   AgentsDeletedMsg,

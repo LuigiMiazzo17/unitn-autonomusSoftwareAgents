@@ -1,6 +1,7 @@
 import { PriorityQueue } from "priority-queue-typescript";
 import { Action } from "src/intents";
-import { TileType, Position, ExternalAgent } from "src/beliefs";
+import { ExternalAgent } from "src/beliefs";
+import { TileType, Position } from "src/beliefs/types";
 import { error } from "src/utils/log";
 import { normalizePos } from "./utils";
 

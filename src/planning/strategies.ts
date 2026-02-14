@@ -1,13 +1,15 @@
 import config from "config";
 import { Queue } from "queue-typed";
 import { Action } from "src/intents";
-import { BeliefSet, TileType, Position, Parcel } from "src/beliefs";
+import { BeliefSet } from "src/beliefs";
+import { TileType, Position } from "src/beliefs/types";
 import { debug, info, error } from "src/utils/log";
 import {
   getPathFromDistances,
   dijkstra,
   computeDistanceVectors,
 } from "./algorithms";
+import Parcel from "src/beliefs/Parcel";
 
 export function getSortedClosestDeliveryTiles(
   beliefs: BeliefSet,

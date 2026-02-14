@@ -7,23 +7,8 @@ import config from "config";
 import crypto from "crypto";
 import { debug, error, info, warn } from "src/utils/log";
 import { isInsideMap } from "./planning";
-
-export enum TileType {
-  WALL,
-  SPAWNABLE,
-  EMPTY,
-  DELIVERY,
-}
-
-export type Position = {
-  x: number;
-  y: number;
-};
-
-export type SpawnableTiles = {
-  pos: Position;
-  checkedCount: number;
-};
+import { Position, SpawnableTiles, TileType } from "./beliefs/types";
+import Parcel from "./beliefs/Parcel";
 
 export class ExternalAgent {
   private id: string;
@@ -53,73 +38,6 @@ export class ExternalAgent {
   }
 
   setSeen() {
-    this.lastSeen = new Date();
-  }
-}
-
-export class Parcel {
-  private id: string;
-  private pos: Position;
-  private carriedBy?: string;
-  private reward: number;
-  private lastSeen: Date;
-
-  constructor(
-    id: string,
-    pos: Position,
-    reward: number,
-    carriedBy?: string,
-    lastSeen?: Date,
-  ) {
-    this.id = id;
-    this.pos = pos;
-    this.reward = reward;
-    this.carriedBy = carriedBy;
-    this.lastSeen = lastSeen ?? new Date();
-  }
-
-  static FromDeliverooParcelUpdate(parcel: DeliverooParcelType): Parcel {
-    return new Parcel(
-      parcel.id,
-      { x: Math.floor(parcel.x), y: Math.floor(parcel.y) },
-      parcel.reward,
-      parcel.carriedBy,
-    );
-  }
-
-  getId(): string {
-    return this.id;
-  }
-
-  getPos(): Position {
-    return this.pos;
-  }
-
-  setPos(pos: Position): void {
-    this.pos = pos;
-  }
-
-  getReward(): number {
-    return this.reward;
-  }
-
-  setReward(reward: number): void {
-    this.reward = reward;
-  }
-
-  getCarriedBy(): string | undefined {
-    return this.carriedBy;
-  }
-
-  setCarriedBy(agentId?: string): void {
-    this.carriedBy = agentId;
-  }
-
-  getLastSeen(): Date {
-    return this.lastSeen;
-  }
-
-  setSeen(): void {
     this.lastSeen = new Date();
   }
 }
