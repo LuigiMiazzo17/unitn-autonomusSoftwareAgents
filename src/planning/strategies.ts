@@ -1,8 +1,7 @@
-import { Parcel as DeliverooParcelType } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
 import { Queue } from "queue-typed";
 import { Action } from "src/intents";
-import { BeliefSet, TileType, Position } from "src/beliefs";
+import { BeliefSet, TileType, Position, Parcel } from "src/beliefs";
 import { debug, info, error } from "src/utils/log";
 import { hasValidMap, isInsideMap } from "./utils";
 import {
@@ -29,7 +28,7 @@ export function getSortedClosestDeliveryTile(
 
   const [distances] = getDistanceVectorAndPrevious(
     map,
-    beliefs.getAgents(),
+    beliefs.getAllAgentsArray(),
     logId,
     pos,
   );
@@ -64,7 +63,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   const parcels = beliefs.getParcels();
   const carryingParcels = beliefs.getCarryingParcels();
   const deliveryTiles = beliefs.getDeliveryTiles();
-  const agents = beliefs.getAgents();
+  const agents = beliefs.getAllAgentsArray();
 
   if (!hasValidMap(map)) {
     error("Map not initialized, cannot plan", logId);
@@ -75,9 +74,13 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     return null;
   }
 
-  const parcelsToPickup = parcels.filter(
-    (p) => !p.carriedBy && isInsideMap(map, { x: p.x, y: p.y }),
-  );
+  const parcelsToPickup = [...parcels.entries()]
+    .filter(
+      ([_, p]) =>
+        !p.getCarriedBy() &&
+        isInsideMap(map, { x: p.getPos().x, y: p.getPos().y }),
+    )
+    .map(([_, p]) => p);
 
   if (parcelsToPickup.length === 0 && carryingParcels.size === 0) {
     return null;
@@ -102,10 +105,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       pos,
     );
     if (!distances || distances.length === 0 || distances[0].length === 0) {
-      error(
-        "Distances not computed, cannot compare delivery vs pickup",
-        logId,
-      );
+      error("Distances not computed, cannot compare delivery vs pickup", logId);
       return null;
     }
 
@@ -118,9 +118,9 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     });
 
     const reachableParcels = parcelsToPickup.filter((p) => {
-      const row = distances[p.y];
+      const row = distances[p.getPos().y];
       if (!row) return false;
-      const dist = row[p.x];
+      const dist = row[p.getPos().x];
       return dist !== undefined && dist !== Infinity;
     });
 
@@ -128,7 +128,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       ? distances[reachableDeliveryTiles[0].y][reachableDeliveryTiles[0].x]
       : Infinity;
     const nearestParcelDist = reachableParcels.reduce((best, p) => {
-      const dist = distances[p.y][p.x];
+      const dist = distances[p.getPos().y][p.getPos().x];
       return dist < best ? dist : best;
     }, Infinity);
 
@@ -159,7 +159,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   type Step = {
     pos: Position;
     carrying: Set<string>;
-    toPickup: DeliverooParcelType[];
+    toPickup: Parcel[];
     tilesWithParcels: number;
     plan: Action[];
     cost: number;
@@ -207,17 +207,19 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     }
 
     const reachableToPickup = current.toPickup.filter((p) => {
-      const row = distances[p.y];
+      const row = distances[p.getPos().y];
       if (!row) return false;
-      const dist = row[p.x];
+      const dist = row[p.getPos().x];
       return dist !== undefined && dist !== Infinity;
     });
 
     reachableToPickup.sort((a, b) => {
       const distA =
-        Math.abs(a.x - current.pos.x) + Math.abs(a.y - current.pos.y);
+        Math.abs(a.getPos().x - current.pos.x) +
+        Math.abs(a.getPos().y - current.pos.y);
       const distB =
-        Math.abs(b.x - current.pos.x) + Math.abs(b.y - current.pos.y);
+        Math.abs(b.getPos().x - current.pos.x) +
+        Math.abs(b.getPos().y - current.pos.y);
       return distA - distB;
     });
 
@@ -231,15 +233,15 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
         map,
         distances,
         previous,
-        { x: parcel.x, y: parcel.y },
+        { x: parcel.getPos().x, y: parcel.getPos().y },
         logId,
       );
 
       if (pathToParcel !== null) {
         const newCarrying = new Set(current.carrying);
-        newCarrying.add(parcel.id);
+        newCarrying.add(parcel.getId());
         queue.push({
-          pos: { x: parcel.x, y: parcel.y },
+          pos: { x: parcel.getPos().x, y: parcel.getPos().y },
           carrying: newCarrying,
           toPickup: reachableToPickup.filter((_, idx) => idx !== i),
           tilesWithParcels:
@@ -249,7 +251,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
         });
       } else {
         error(
-          `No path found to parcel ${parcel.id} at (${parcel.x}, ${parcel.y})`,
+          `No path found to parcel ${parcel.getId()} at (${parcel.getPos().x}, ${parcel.getPos().y})`,
           logId,
         );
       }
@@ -314,7 +316,7 @@ export function generateHuntingPlan(
   const map = beliefs.getMap();
   const pos = beliefs.getPos();
   const logId = beliefs.getId();
-  const agents = beliefs.getAgents();
+  const agents = beliefs.getAllAgentsArray();
   const queue = new Queue<Action>();
 
   if (!hasValidMap(map)) {
