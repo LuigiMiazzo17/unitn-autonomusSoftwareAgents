@@ -96,7 +96,7 @@ export default class Agent {
     tiles,
   ) => {
     info(`Map update event: ${width}x${height}`, this.id);
-    this.beliefs.updateMap(BeliefSet.convertMap({ width, height, tiles }));
+    this.beliefs.updateMap(width, height, tiles);
     this.plan = new Queue<Action>();
   };
 

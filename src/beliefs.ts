@@ -6,10 +6,11 @@ import {
 import config from "config";
 import crypto from "crypto";
 import { debug, error, info, warn } from "src/utils/log";
-import { isInsideMap } from "./planning";
 import { Position, SpawnableTiles, TileType } from "./beliefs/types";
 import Parcel from "./beliefs/Parcel";
 import ExternalAgent from "./beliefs/ExternalAgent";
+import MapBelief from "./beliefs/MapBelief";
+import { normalizePos } from "./beliefs/utils";
 
 export class ReducedBeliefSet {
   protected id: string;
@@ -18,13 +19,9 @@ export class ReducedBeliefSet {
   protected foreignAgents: Map<string, ExternalAgent> = new Map();
   protected groupAgents: Map<string, ExternalAgent> = new Map();
 
-  protected normalizePos(pos: Position): Position {
-    return { x: Math.floor(pos.x), y: Math.floor(pos.y) };
-  }
-
   constructor(id: string, pos: Position) {
     this.id = id;
-    this.pos = this.normalizePos(pos);
+    this.pos = normalizePos(pos);
   }
 
   getId(): string {
@@ -36,7 +33,7 @@ export class ReducedBeliefSet {
   }
 
   updatePos(pos: Position): void {
-    this.pos = this.normalizePos(pos);
+    this.pos = normalizePos(pos);
   }
 
   getCarryingParcels(): Set<string> {
@@ -464,10 +461,7 @@ export class ReducedBeliefSet {
 }
 
 export class BeliefSet extends ReducedBeliefSet {
-  private map: TileType[][] = [];
-  private mapVersion: number = 0;
-  private deliveryTiles: Position[] = [];
-  private spawnableTiles: SpawnableTiles[] = [];
+  private mapBelief: MapBelief;
 
   constructor(
     id: string,
@@ -475,60 +469,27 @@ export class BeliefSet extends ReducedBeliefSet {
     pos: Position,
   ) {
     super(id, pos);
-    const map = BeliefSet.convertMap(unserialized_map);
-    this.updateMap(map);
-    this.pos = this.normalizePos(pos);
+    this.mapBelief = new MapBelief(unserialized_map);
+    this.pos = normalizePos(pos);
   }
-
   getMap(): TileType[][] {
-    return this.map;
+    return this.mapBelief.getMap();
   }
 
-  updateMap(map: TileType[][]): void {
-    this.map = map;
-    this.mapVersion += 1;
+  updateMap(width: number, height: number, tiles: Tile[]): void {
+    const map = MapBelief.convertMap({ width, height, tiles });
+    this.mapBelief.update(map);
     this.foreignAgents = new Map<string, ExternalAgent>();
     this.groupAgents = new Map<string, ExternalAgent>();
     this.knownParcels = new Map<string, Parcel>();
-    this.deliveryTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.DELIVERY ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => pos as Position),
-      )
-      .flat();
-    this.spawnableTiles = this.map
-      .map((row, y) =>
-        row
-          .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
-          .filter((pos) => pos !== null)
-          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
-      )
-      .flat() as SpawnableTiles[];
   }
 
   getDeliveryTiles(): Position[] {
-    return this.deliveryTiles;
+    return this.mapBelief.getDeliveryTiles();
   }
 
   getSpawnableTiles(): SpawnableTiles[] {
-    return this.spawnableTiles;
-  }
-
-  private hasValidMap(): boolean {
-    return this.map.length > 0 && this.map[0].length > 0;
-  }
-
-  private isInsideMap(pos: Position): boolean {
-    if (!this.hasValidMap()) return false;
-    const norm = this.normalizePos(pos);
-    return (
-      norm.x >= 0 &&
-      norm.x < this.map[0].length &&
-      norm.y >= 0 &&
-      norm.y < this.map.length
-    );
+    return this.mapBelief.getSpawnableTiles();
   }
 
   isDeliveryAvailable(): boolean {
@@ -539,10 +500,10 @@ export class BeliefSet extends ReducedBeliefSet {
   }
 
   isOnDeliveryTile(): boolean {
-    if (!this.isInsideMap(this.pos)) {
+    if (!this.mapBelief.contains(this.pos)) {
       return false;
     }
-    if (this.map[this.pos.y][this.pos.x] === TileType.DELIVERY) {
+    if (this.mapBelief.getMap()[this.pos.y][this.pos.x] === TileType.DELIVERY) {
       return true;
     }
     return false;
@@ -562,32 +523,6 @@ export class BeliefSet extends ReducedBeliefSet {
     }
   }
 
-  static convertMap(m: {
-    width: number;
-    height: number;
-    tiles: Tile[];
-  }): TileType[][] {
-    const map = Array.from({ length: m.height }, () =>
-      Array(m.width).fill(TileType.EMPTY),
-    );
-
-    for (const tile of m.tiles) {
-      if (tile.type === 0) {
-        map[tile.y][tile.x] = TileType.WALL;
-      } else if (tile.type === 1) {
-        map[tile.y][tile.x] = TileType.SPAWNABLE;
-      } else if (tile.type === 2) {
-        map[tile.y][tile.x] = TileType.DELIVERY;
-      } else if (tile.type === 3) {
-        map[tile.y][tile.x] = TileType.EMPTY;
-      } else {
-        throw new Error(`Unknown tile type: ${tile.type}`);
-      }
-    }
-
-    return map;
-  }
-
   updateKnownParcelsFromParcelUpdate(
     parcels: DeliverooParcelType[],
   ): [boolean, Set<string>] {
@@ -596,7 +531,7 @@ export class BeliefSet extends ReducedBeliefSet {
     const carryingParcels = this.getCarryingParcels();
 
     for (const parcel of parcels) {
-      if (!isInsideMap(this.map, parcel)) {
+      if (!this.mapBelief.contains(parcel)) {
         error(`Position of parcel out of bounds: (${parcel.x}, ${parcel.y})`);
         continue;
       }
