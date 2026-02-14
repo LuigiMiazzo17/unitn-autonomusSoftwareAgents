@@ -1,9 +1,9 @@
 import { PriorityQueue } from "priority-queue-typescript";
 import { Action } from "src/intents";
-import { ExternalAgent } from "src/beliefs";
 import { TileType, Position } from "src/beliefs/types";
 import { error } from "src/utils/log";
 import { normalizePos } from "./utils";
+import ExternalAgent from "src/beliefs/ExternalAgent";
 
 export function computeDistanceVectors(
   map: TileType[][],
