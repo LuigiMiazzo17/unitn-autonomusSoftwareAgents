@@ -6,12 +6,15 @@ import {
   Tile,
   Timestamp,
 } from "@unitn-asa/deliveroo-js-client";
-import { Mutex } from "async-mutex";
 import config from "config";
 import { Queue } from "queue-typed";
 import { BeliefSet, Position } from "src/beliefs";
 import ConnectionManager from "src/coordination/connectionManager";
-import Message, { HandshakeMsg } from "src/coordination/message";
+import Message, {
+  AgentsDeletedMsg,
+  HandshakeMsg,
+  ParcelsDeletedMsg,
+} from "src/coordination/message";
 import { IntentionSelector } from "src/intentions";
 import { Action, Intention } from "src/intents";
 import {
@@ -39,7 +42,6 @@ export default class Agent {
   private currentScore: number = 0;
   private stopped: boolean = false;
   private beliefsChecksum: string = "";
-  private agentSensingMutex: Mutex = new Mutex();
 
   static readonly FRAME_ADVANCE_INTERVAL = 100;
 
@@ -100,13 +102,13 @@ export default class Agent {
   private onMsg: (senderId: string, _: unknown, msg: any) => void = (
     senderId,
     _, // unused agent name
-    msg,
+    any_msg,
   ) => {
-    info(`Received message: ${JSON.stringify(msg)}`, this.id);
-
+    let msg = any_msg as Message; // HACK: try clause in JS make type inference fail
     try {
-      msg = Message.fromObject(msg);
+      msg = Message.fromObject(any_msg);
     } catch (e) {
+      console.error(e);
       error(
         `Failed to parse message: ${e instanceof Error ? e.message : String(e)}`,
         this.id,
@@ -114,12 +116,28 @@ export default class Agent {
       return;
     }
 
-    if (msg.content instanceof HandshakeMsg) {
-      info(
+    // Merge knowledge from the message into our beliefs about the sender agent
+    this.beliefs.mergeFromMessage(senderId, msg.getReducedBeliefSet());
+
+    const msgContent = msg.getContent();
+
+    if (msgContent instanceof HandshakeMsg) {
+      debug(
         `Handshake received from agent ${senderId}, adding to known agents`,
         this.id,
       );
-      this.connectionManager.handleReceivedHandshakeMsg(senderId);
+    } else if (msgContent instanceof ParcelsDeletedMsg) {
+      debug(
+        `ParcelsDeletedMsg received from agent ${senderId}, removing parcels ${msgContent.getParcelIds()}`,
+        this.id,
+      );
+      this.beliefs.removeParcelsById(msgContent.getParcelIds());
+    } else if (msgContent instanceof AgentsDeletedMsg) {
+      debug(
+        `AgentsDeletedMsg received from agent ${senderId}, removing agents ${msgContent.getAgentIds()}`,
+        this.id,
+      );
+      this.beliefs.removeForeignAgentsById(msgContent.getAgentIds());
     }
   };
 
@@ -136,10 +154,17 @@ export default class Agent {
 
   private onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    const somethingChanged = this.beliefs.updateParcels(parcels);
+    const [somethingChanged, deletedParcels] =
+      this.beliefs.updateKnownParcelsFromParcelUpdate(parcels);
     if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Action>();
+    }
+
+    if (deletedParcels.size > 0) {
+      this.connectionManager.sendBroadcastMsg(
+        new ParcelsDeletedMsg(deletedParcels),
+      );
     }
   };
 
@@ -147,40 +172,19 @@ export default class Agent {
     agents,
   ) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
-    const newAgents = agents.filter(
-      (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
-    );
+    const [somethingChanged, deletedAgents] =
+      this.beliefs.updateAgentsFromSensing(agents);
 
-    // TODO: Update this for proximity sensing, not just from broadcast msg
+    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+      info(`Parcels changed, dropping plan`, this.id);
+      this.plan = new Queue<Action>();
+    }
 
-    // for (const agent of newAgents) {
-    //   info(`Sending handshake to agent ${agent.id}`, this.id);
-    //   console.log(`Sending handshake to agent ${agent.id} from ${this.id}`);
-    //   const handshakeMsg = new HandshakeMsg(
-    //     Array.from(this.beliefs.getKnwonAgentsIds()),
-    //   );
-    //
-    //   this.apiConnection.emitSay(
-    //     agent.id,
-    //     new Message("blabla", handshakeMsg),
-    //   );
-    //
-    //   // periodically and indefinetly send keep-alive messages to the newly discovered agent, to keep the connection alive and prevent it from disconnecting us
-    //   const sendKeepAlive: () => void = async () => {
-    //     while (true) {
-    //       if (this.stopped) {
-    //         return;
-    //       }
-    //
-    //       await new Promise((resolve) => setTimeout(resolve, 1000));
-    //
-    //       this.apiConnection.emitSay(agent.id, new KeepAliveMsg());
-    //     }
-    //   };
-    //   // sendKeepAlive();
-    // }
-    //
-    // this.beliefs.updateAgents(agents);
+    if (deletedAgents.size > 0) {
+      this.connectionManager.sendBroadcastMsg(
+        new AgentsDeletedMsg(deletedAgents),
+      );
+    }
   };
 
   private onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
@@ -218,6 +222,13 @@ export default class Agent {
       this.id,
     );
 
+    if (
+      this.beliefs.getPos().x !== Math.floor(agent.x) ||
+      this.beliefs.getPos().y !== Math.floor(agent.y)
+    ) {
+      this.moveFailCount += 1;
+    }
+
     this.currentScore = agent.score;
     this.lastTimestampUpdate = timestamp;
   };
@@ -239,7 +250,7 @@ export default class Agent {
 
     while (!this.stopped) {
       const start = Date.now();
-      // await this.nextFrame();
+      await this.nextFrame();
 
       const elapsed = Date.now() - start;
       if (elapsed < Agent.FRAME_ADVANCE_INTERVAL) {

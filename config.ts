@@ -31,6 +31,8 @@ export default {
   deliveryOverPickupRatio: parseFloat(
     process.env.DELIVERY_OVER_PICKUP_RATIO || "1.5",
   ),
+  parcelSensingDistance: parseInt(process.env.PARCEL_SENSING_DISTANCE || "5"),
+  agentSensingDistance: parseInt(process.env.AGENT_SENSING_DISTANCE || "5"),
   recalculatePlanOnParcelUpdate: process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE
     ? process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true"
     : true,
