@@ -1,4 +1,6 @@
+import { Queue } from "queue-typed";
 import { ReducedBeliefSet, ReducedBeliefSetWithout } from "src/beliefs";
+import { Action, actionToString, stringToAction } from "src/intents";
 
 export default class Message {
   private content: MsgType;
@@ -51,7 +53,7 @@ export default class Message {
 }
 
 export interface MsgType {
-  type: "handshake" | "parcelsDeleted" | "agentsDeleted";
+  type: "handshake" | "parcelsDeleted" | "agentsDeleted" | "plan";
   toObject(): any;
 }
 
@@ -107,6 +109,26 @@ export class AgentsDeletedMsg implements MsgType {
   }
 }
 
+export class PlanMsg implements MsgType {
+  readonly type = "plan";
+  private plan: Queue<Action>;
+
+  constructor(plan: Queue<Action>) {
+    this.plan = plan;
+  }
+
+  getPlan(): Queue<Action> {
+    return this.plan;
+  }
+
+  toObject(): any {
+    return {
+      type: this.type,
+      plan: this.plan.toArray().map((action) => actionToString(action)),
+    };
+  }
+}
+
 export class MessageTypeFactory {
   static fromObject(obj: any): MsgType {
     if (typeof obj.type !== "string") {
@@ -150,6 +172,28 @@ export class MessageTypeFactory {
           agentSet.add(id);
         }
         return new AgentsDeletedMsg(agentSet);
+
+      case "plan":
+        if (!Array.isArray(obj.plan)) {
+          throw new Error("Invalid plan message: plan should be an array");
+        }
+        const planQueue = new Queue<Action>();
+        for (const actionStr of obj.plan) {
+          if (typeof actionStr !== "string") {
+            throw new Error(
+              "Invalid plan message: each action should be a string",
+            );
+          }
+          try {
+            const action = stringToAction(actionStr);
+            planQueue.push(action);
+          } catch (e) {
+            throw new Error(
+              `Invalid plan message: unknown action "${actionStr}"`,
+            );
+          }
+        }
+        return new PlanMsg(planQueue);
 
       default:
         throw new Error(`Unknown message type: ${obj.type}`);

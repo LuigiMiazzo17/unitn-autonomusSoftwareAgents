@@ -29,7 +29,7 @@ export default {
     10,
   ),
   deliveryOverPickupRatio: parseFloat(
-    process.env.DELIVERY_OVER_PICKUP_RATIO || "1.5",
+    process.env.DELIVERY_OVER_PICKUP_RATIO || "0.8",
   ),
   parcelSensingDistance: parseInt(process.env.PARCEL_SENSING_DISTANCE || "5"),
   agentSensingDistance: parseInt(process.env.AGENT_SENSING_DISTANCE || "5"),
