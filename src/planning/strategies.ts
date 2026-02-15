@@ -3,7 +3,7 @@ import { Queue } from "queue-typed";
 import { Action } from "src/intents";
 import { BeliefSet } from "src/beliefs";
 import { TileType, Position } from "src/beliefs/types";
-import { debug, info, error } from "src/utils/log";
+import { debug, info, error, warn } from "src/utils/log";
 import {
   computeDistanceVectors,
   getPathFromDistances,
@@ -268,21 +268,33 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   return null;
 }
 
-export function generateHuntingPlan(beliefs: BeliefSet): Queue<Action> {
-  // TODO: Find here were to go
-
+export function generatePlanToPos(
+  beliefs: BeliefSet,
+  targetPos: Position,
+  extraActions: Action[] = [],
+): Queue<Action> {
   const map = beliefs.getMap();
   const pos = beliefs.getAgentPos();
   const agents = beliefs.getAllAgents();
   const queue = new Queue<Action>();
 
-  if (beliefs.isPickupAvailable()) {
-    queue.push(Action.PICKUP);
-    return queue;
-  }
+  // if (beliefs.isPickupAvailable()) {
+  //   queue.push(Action.PICKUP);
+  //   return queue;
+  // }
+  //
+  // if (beliefs.isDeliveryAvailable()) {
+  //   queue.push(Action.DELIVER);
+  //   return queue;
+  // }
 
-  if (beliefs.isDeliveryAvailable()) {
-    queue.push(Action.DELIVER);
+  if (pos.x === targetPos.x && pos.y === targetPos.y) {
+    warn(
+      `Already on target tile at (${targetPos.x}, ${targetPos.y}), executing extra actions if any`,
+    );
+    for (const action of extraActions) {
+      queue.push(action);
+    }
     return queue;
   }
 
@@ -293,7 +305,11 @@ export function generateHuntingPlan(beliefs: BeliefSet): Queue<Action> {
     }
   } else {
     error(`No path found to target tile at (${targetPos.x}, ${targetPos.y})`);
-    queue.push(Action.NOOP);
+    return new Queue<Action>([Action.NOOP]);
+  }
+
+  for (const action of extraActions) {
+    queue.push(action);
   }
 
   return queue;

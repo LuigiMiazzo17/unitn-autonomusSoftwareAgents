@@ -1,11 +1,12 @@
-import { Position } from "src/beliefs/types";
+import { Position, SpawnableTiles } from "src/beliefs/types";
 
 export type Intention =
   | {
       kind: "go_pickup";
       parcelId: string;
       distance: number;
+      pos: Position;
     }
   | { kind: "deliver_parcels"; pos: Position; distance: number }
-  | { kind: "explore_spawn" }
+  | { kind: "explore_spawn"; tile: SpawnableTiles }
   | { kind: "noop" };

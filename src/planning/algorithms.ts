@@ -56,10 +56,7 @@ export function computeDistanceVectors(
         ny >= 0 &&
         ny < rows &&
         map[ny][nx] !== TileType.WALL &&
-        !agents.some(
-          (a) =>
-            Math.floor(a.getPos().x) === nx && Math.floor(a.getPos().y) === ny,
-        )
+        !agents.some((a) => a.isOn({ x: nx, y: ny }))
       ) {
         const alt = distances[y][x] + 1;
         if (alt < distances[ny][nx]) {

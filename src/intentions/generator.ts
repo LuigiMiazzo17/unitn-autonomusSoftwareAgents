@@ -43,6 +43,7 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
       kind: "go_pickup",
       parcelId: parcel.getId(),
       distance: distance,
+      pos: parcel.getPos(),
     });
   }
 
@@ -55,8 +56,8 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
     if (dist !== Infinity) {
       intentions.push({
         kind: "explore_spawn",
+        tile: spawn,
       });
-      break;
     }
   }
 

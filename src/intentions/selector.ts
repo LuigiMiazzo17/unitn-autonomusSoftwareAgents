@@ -28,6 +28,8 @@ function calculatePriority(intention: Intention): number {
     case "deliver_parcels":
       return intention.distance * config.deliveryOverPickupRatio;
     case "explore_spawn":
-      return 100; // Arbitrary priority for exploring spawn
+      // Random arbitrary priority for exploring spawn, adjusted by intention.tile.checkedCount to prefer less checked tiles
+      // This is a very basic heuristic and can be improved by considering distance to the spawn tile, spawn tiles clusters, etc.
+      return 100 + Math.random() * 10 + intention.tile.checkedCount;
   }
 }

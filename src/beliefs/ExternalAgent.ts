@@ -38,6 +38,10 @@ export default class ExternalAgent {
     return Math.abs(this.pos.x - pos.x) + Math.abs(this.pos.y - pos.y);
   }
 
+  isOn(pos: Position): boolean {
+    return Math.floor(this.pos.x) === pos.x && Math.floor(this.pos.y) === pos.y;
+  }
+
   getId(): string {
     return this.id;
   }

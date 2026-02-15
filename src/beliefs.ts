@@ -284,9 +284,7 @@ export class BeliefSet extends ReducedBeliefSet {
 
   updateKnownParcelsFromParcelUpdate(
     parcels: DeliverooParcelType[],
-  ): [boolean, Set<string>] {
-    let somethingChanged = false;
-    // TODO: Revise somethingChanged
+  ): Set<string> {
     const carryingParcels = this.getCarryingParcels();
 
     for (const parcel of parcels) {
@@ -314,7 +312,6 @@ export class BeliefSet extends ReducedBeliefSet {
           optionalParcel.setCarriedBy(this.getAgentId());
 
           debug(`Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`);
-          somethingChanged = true;
         }
       } else {
         // New parcel discovered
@@ -328,7 +325,6 @@ export class BeliefSet extends ReducedBeliefSet {
           );
         }
         debug(`Discovered new parcel ${parcel.id}`);
-        somethingChanged = true;
       }
     }
 
@@ -338,7 +334,6 @@ export class BeliefSet extends ReducedBeliefSet {
       if (!parcelIds.includes(parcelId)) {
         this.knownParcels.delete(parcelId);
         debug(`Parcel ${parcelId} dropped`, this.getAgentId());
-        somethingChanged = true;
       }
     }
 
@@ -359,11 +354,10 @@ export class BeliefSet extends ReducedBeliefSet {
         debug(
           `Parcel ${parcelId} is within sensing range but not in the update, removing from known parcels`,
         );
-        somethingChanged = true;
       }
     }
 
     debug(`Updated parcels: ${this.knownParcels.size}`);
-    return [somethingChanged, deletedParcelIds];
+    return deletedParcelIds;
   }
 }

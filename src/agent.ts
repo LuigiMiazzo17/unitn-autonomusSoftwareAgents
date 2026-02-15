@@ -18,7 +18,7 @@ import Message, {
 } from "src/coordination/message";
 import { Intention, getIntention } from "src/intentions";
 import { Action } from "src/intents";
-import { PddlPlanner, generateHuntingPlan, isInsideMap } from "src/planning";
+import { PddlPlanner, generatePlanToPos, isInsideMap } from "src/planning";
 import { debug, error, info, warn } from "src/utils/log";
 
 export type AgentOptions = {
@@ -149,9 +149,10 @@ export default class Agent {
 
   private onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    const [somethingChanged, deletedParcels] =
+    const deletedParcels =
       this.beliefs.updateKnownParcelsFromParcelUpdate(parcels);
-    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+
+    if (this.updateBeliefsChecksum() && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Action>();
     }
@@ -169,9 +170,7 @@ export default class Agent {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
     const deletedAgents = this.beliefs.updateAgentsFromSensing(agents);
 
-    // TODO: use beliefs hash diff to detect this
-    const somethingChanged = true;
-    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+    if (this.updateBeliefsChecksum() && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Action>();
     }
@@ -218,16 +217,21 @@ export default class Agent {
       this.id,
     );
 
-    if (
-      this.beliefs.getAgentPos().x !== Math.floor(agent.x) ||
-      this.beliefs.getAgentPos().y !== Math.floor(agent.y)
-    ) {
-      this.moveFailCount += 1;
-    }
-
     this.currentScore = agent.score;
     this.lastTimestampUpdate = timestamp;
   };
+
+  /**
+   * Updates the beliefs checksum and returns true if it changed since the last update
+   * This is used to detect if the beliefs have changed since the last time we checked, so we can decide if we need to revision the intentions
+   * @returns true if the beliefs checksum changed since the last update, false otherwise
+   */
+  private updateBeliefsChecksum(): boolean {
+    const newChecksum = this.beliefs.getChecksumOfBeliefs();
+    const changed = this.beliefsChecksum !== newChecksum;
+    this.beliefsChecksum = newChecksum;
+    return changed;
+  }
 
   async run(): Promise<void> {
     await this.runFor(Infinity);
@@ -332,6 +336,10 @@ export default class Agent {
         );
         const intention = getIntention(this.beliefs);
         this.plan = await this.generatePlan(intention);
+        debug(
+          `Generated plan for intention ${intention.kind}: ${this.plan.toArray().map((a) => Action[a])}`,
+          this.id,
+        );
       }
       // If is master generate a planm
       else if (isMasterAgent) {
@@ -438,20 +446,19 @@ export default class Agent {
 
   async generatePlan(intention: Intention): Promise<Queue<Action>> {
     switch (intention.kind) {
-      case "explore_spawn": {
-        return generateHuntingPlan(this.beliefs);
-      }
-      case "deliver_parcels": {
-        return; // TODO: generate plan to go to deliver pos
-      }
-      case "go_pickup": {
-        return; //TODO: generate plan to go and pickup
-      }
-      case "noop": {
-        const q = new Queue<Action>();
-        q.push(Action.NOOP);
-        return q;
-      }
+      case "explore_spawn":
+        return generatePlanToPos(this.beliefs, intention.tile.pos);
+
+      case "deliver_parcels":
+        return generatePlanToPos(this.beliefs, intention.pos, [Action.DELIVER]);
+      // return generatePlanToPos(this.beliefs, intention.pos);
+
+      case "go_pickup":
+        return generatePlanToPos(this.beliefs, intention.pos, [Action.PICKUP]);
+      // return generatePlanToPos(this.beliefs, intention.pos);
+
+      case "noop":
+        return new Queue<Action>([Action.NOOP]);
     }
   }
 }
