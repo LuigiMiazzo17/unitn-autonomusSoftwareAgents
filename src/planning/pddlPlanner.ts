@@ -4,7 +4,7 @@ import path from "path";
 import { Queue } from "queue-typed";
 import { BeliefSet } from "src/beliefs";
 import { TileType } from "src/beliefs/types";
-import { Action } from "src/intents";
+import { Action } from "src/planning/actions";
 import { debug, error, info } from "src/utils/log";
 import { fileURLToPath } from "url";
 
@@ -82,8 +82,8 @@ export class PddlPlanner {
   private getDynamicObjectsAndInitAndGoal(): [string[], string[], string] {
     const parcels = this.beliefSet.getParcels();
     const agents = this.beliefSet
-      .getAgents()
-      .filter((a) => a.id !== this.agentId);
+      .getAllAgents()
+      .filter((a) => a.getId() !== this.agentId);
 
     const pos = this.beliefSet.getAgentPos();
 
@@ -91,32 +91,39 @@ export class PddlPlanner {
     const init = [];
 
     for (const parcel of parcels) {
-      if (parcel.carriedBy !== null && parcel.carriedBy !== this.agentId) {
+      if (
+        parcel.getCarriedBy() !== null &&
+        parcel.getCarriedBy() !== this.agentId
+      ) {
         continue;
       }
-      objects.push(`parcel${parcel.id} - parcel`);
-      init.push(`(parcel_at parcel${parcel.id} tile${parcel.x}_${parcel.y})`);
-      if (parcel.carriedBy === this.agentId) {
-        init.push(`(carrying agent1 parcel${parcel.id})`);
+      objects.push(`parcel${parcel.getId()} - parcel`);
+      init.push(
+        `(parcel_at parcel${parcel.getId()} tile${parcel.getPos().x}_${parcel.getPos().y})`,
+      );
+      if (parcel.getCarriedBy() === this.agentId) {
+        init.push(`(carrying agent1 parcel${parcel.getId()})`);
       } else {
-        init.push(`(not (carrying agent1 parcel${parcel.id}))`);
+        init.push(`(not (carrying agent1 parcel${parcel.getId()}))`);
       }
 
-      init.push(`(not (delivered parcel${parcel.id}))`);
+      init.push(`(not (delivered parcel${parcel.getId()}))`);
     }
 
     for (const agent of agents) {
-      init.push(`(blocked tile${Math.floor(agent.x)}_${Math.floor(agent.y)})`);
+      init.push(
+        `(blocked tile${Math.floor(agent.getPos().x)}_${Math.floor(agent.getPos().y)})`,
+      );
     }
 
     init.push(`(at agent1 tile${pos.x}_${pos.y})`);
 
     const goal = [];
     for (const parcel of parcels) {
-      if (parcel.carriedBy) {
+      if (parcel.getCarriedBy()) {
         continue;
       }
-      goal.push(`(delivered parcel${parcel.id})`);
+      goal.push(`(delivered parcel${parcel.getId()})`);
     }
 
     debug("PddlProblem dynamic objects generated", this.agentId);
@@ -269,7 +276,7 @@ export class PddlPlanner {
         });
         this.id = null;
         error("PDDL problem deleted due to error", this.agentId);
-        process.exit(1); // TODO: handle this better
+        return null;
       });
   }
 
@@ -286,7 +293,7 @@ export class PddlPlanner {
 
     const queue = new Queue<Action>();
     for (const step of planSteps) {
-      let intent = undefined;
+      let action = undefined;
 
       if (step.startsWith("move")) {
         const parts = step
@@ -305,13 +312,13 @@ export class PddlPlanner {
           .map((v: string) => parseInt(v));
 
         if (toX === fromX + 1 && toY === fromY) {
-          intent = Action.MOVE_RIGHT;
+          action = Action.MOVE_RIGHT;
         } else if (toX === fromX - 1 && toY === fromY) {
-          intent = Action.MOVE_LEFT;
+          action = Action.MOVE_LEFT;
         } else if (toX === fromX && toY === fromY + 1) {
-          intent = Action.MOVE_UP;
+          action = Action.MOVE_UP;
         } else if (toX === fromX && toY === fromY - 1) {
-          intent = Action.MOVE_DOWN;
+          action = Action.MOVE_DOWN;
         } else {
           error(
             `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
@@ -320,16 +327,16 @@ export class PddlPlanner {
           return null;
         }
       } else if (step.startsWith("pickup")) {
-        intent = Action.PICKUP;
+        action = Action.PICKUP;
       } else if (step.startsWith("deliver")) {
-        intent = Action.DELIVER;
+        action = Action.DELIVER;
       } else {
         error(`Unknown action in PDDL plan: ${step}`, this.agentId);
         return null;
       }
 
-      if (intent !== undefined) {
-        queue.push(intent);
+      if (action !== undefined) {
+        queue.push(action);
       }
     }
     return queue;

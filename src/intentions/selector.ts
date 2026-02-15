@@ -1,7 +1,7 @@
-import { Intention } from "./types";
-import { PriorityQueue } from "priority-queue-typescript";
 import config from "config";
+import { PriorityQueue } from "priority-queue-typescript";
 import { splitmix32 } from "src/utils/math";
+import { Intention } from "./types";
 
 export default function selectIntention(intentions: Intention[]): Intention {
   // Intention are already preconditioned, so we can just select the first based on some euritics

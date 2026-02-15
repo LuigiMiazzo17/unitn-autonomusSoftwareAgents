@@ -1,6 +1,6 @@
 import { ReducedBeliefSet } from "src/beliefs";
 import { Queue } from "queue-typed";
-import { Action } from "src/intents";
+import { Action } from "src/planning/actions";
 import { Intention } from "src/intentions";
 
 export default class Message {

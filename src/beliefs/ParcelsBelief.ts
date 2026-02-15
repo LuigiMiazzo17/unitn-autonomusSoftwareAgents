@@ -1,8 +1,8 @@
 import { Parcel as DeliverooParcelType } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
+import Parcel from "src/beliefs/Parcel";
+import { MeAgent } from "src/beliefs/agents";
 import { debug, error } from "src/utils/log";
-import Parcel from "./Parcel";
-import { MeAgent } from "./agents";
 
 export default class ParcelsBelief {
   private knownParcels: Map<string, Parcel> = new Map<string, Parcel>();

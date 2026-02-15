@@ -17,8 +17,8 @@ import Message, {
   ParcelsDeletedMsg,
 } from "src/coordination/message";
 import { Intention, getIntention } from "src/intentions";
-import { Action } from "src/intents";
 import { PddlPlanner, generatePlanToPos, isInsideMap } from "src/planning";
+import { Action } from "src/planning/actions";
 import { debug, error, info, warn } from "src/utils/log";
 
 export type AgentOptions = {

@@ -1,5 +1,5 @@
-import { Position } from "./types";
 import { Parcel as DeliverooParcelType } from "@unitn-asa/deliveroo-js-client";
+import { Position } from "src/beliefs/types";
 
 export default class Parcel {
   private id: string;
