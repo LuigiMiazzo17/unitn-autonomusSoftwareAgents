@@ -75,6 +75,7 @@ export default class Agent {
       await apiConnection.map,
     );
     agent.connectionManager.start();
+    agent.apiConnection.connect();
 
     return agent;
   }
@@ -241,38 +242,16 @@ export default class Agent {
     return changed;
   }
 
-  async run(): Promise<void> {
-    await this.runFor(Infinity);
-  }
-
-  async runFor(durationMs: number): Promise<void> {
-    this.stopped = false;
-    this.apiConnection.connect();
-
-    info(
-      `Agent started at position (${this.beliefs.getAgentPos().x}, ${this.beliefs.getAgentPos().y})`,
-      this.id,
-    );
-
-    const startTime = Date.now();
-
-    while (!this.stopped) {
-      const start = Date.now();
-      await this.nextFrame();
-
-      const elapsed = Date.now() - start;
-      if (elapsed < Agent.FRAME_ADVANCE_INTERVAL) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, Agent.FRAME_ADVANCE_INTERVAL - elapsed),
-        );
-      }
-
-      if (Date.now() - startTime >= durationMs) {
-        break;
-      }
-    }
-
-    this.apiConnection.disconnect();
+  run() {
+    setTimeout(() => {
+      this.nextFrame().finally(() => {
+        if (this.isStopped()) {
+          this.apiConnection.disconnect();
+        } else {
+          this.run();
+        }
+      });
+    }, 0);
   }
 
   stop(): void {
