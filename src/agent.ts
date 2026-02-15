@@ -429,9 +429,7 @@ export default class Agent {
       return false;
     }
     this.beliefs.updateAgentPos(expected);
-    if (this.beliefs.isOnSpawnableTile()) {
-      this.beliefs.markCurrentSpawnableTileChecked();
-    }
+    this.beliefs.markVisibleSpawnableTilesChecked(config.parcelSensingDistance);
     return true;
   }
 

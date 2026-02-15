@@ -71,7 +71,28 @@ export default class MapBelief {
     }
   }
 
+  markSpawnableTilesCheckedInRadius(center: Position, radius: number): void {
+    const normalizedCenter = normalizePos(center);
+    const clampedRadius = Math.max(0, radius);
+    const radiusSquared = clampedRadius * clampedRadius;
+
+    for (const tile of this.spawnableTiles) {
+      const dx = tile.pos.x - normalizedCenter.x;
+      const dy = tile.pos.y - normalizedCenter.y;
+      if (dx * dx + dy * dy <= radiusSquared) {
+        tile.checkedCount += 1;
+      }
+    }
+  }
+
   update(map: TileType[][]): void {
+    const previousCheckedByTile = new Map<string, number>(
+      this.spawnableTiles.map((tile) => [
+        `${tile.pos.x},${tile.pos.y}`,
+        tile.checkedCount,
+      ]),
+    );
+
     this.map = map;
     this.mapVersion += 1;
 
@@ -88,7 +109,14 @@ export default class MapBelief {
         row
           .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
           .filter((pos) => pos !== null)
-          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
+          .map((pos) => {
+            const tilePos = pos as Position;
+            const key = `${tilePos.x},${tilePos.y}`;
+            return {
+              pos: tilePos,
+              checkedCount: previousCheckedByTile.get(key) ?? 0,
+            };
+          }),
       )
       .flat() as SpawnableTiles[];
   }

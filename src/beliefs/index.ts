@@ -217,6 +217,13 @@ export class BeliefSet extends ReducedBeliefSet {
     this.mapBelief.markSpawnableTileChecked(this.getAgentPos());
   }
 
+  markVisibleSpawnableTilesChecked(sensingDistance: number): void {
+    this.mapBelief.markSpawnableTilesCheckedInRadius(
+      this.getAgentPos(),
+      sensingDistance,
+    );
+  }
+
   updateKnownParcelsFromParcelUpdate(
     parcels: DeliverooParcelType[],
   ): Set<string> {
