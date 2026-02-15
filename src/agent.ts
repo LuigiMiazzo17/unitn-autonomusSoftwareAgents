@@ -10,7 +10,7 @@ import config from "config";
 import { Queue } from "queue-typed";
 import { BeliefSet } from "src/beliefs";
 import { Position } from "src/beliefs/types";
-import ConnectionManager from "src/coordination/connectionManager";
+import ConnectionManager from "src/coordination/ConnectionManager";
 import Message, {
   AgentsDeletedMsg,
   IntentionMsg,
