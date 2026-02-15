@@ -8,7 +8,7 @@ import crypto from "crypto";
 import { debug, error, warn } from "src/utils/log";
 import { Position, SpawnableTiles, TileType } from "./beliefs/types";
 import Parcel from "./beliefs/Parcel";
-import ExternalAgent from "./beliefs/ExternalAgent";
+import { ExternalAgent } from "./beliefs/agents";
 import MapBelief from "./beliefs/MapBelief";
 import AgentsBelief from "./beliefs/AgentsBelief";
 
@@ -17,7 +17,7 @@ export class ReducedBeliefSet {
   protected agentsBelief: AgentsBelief;
 
   constructor(id: string, pos: Position) {
-    this.agentsBelief = new AgentsBelief(new ExternalAgent(id, pos));
+    this.agentsBelief = new AgentsBelief(id, pos);
   }
 
   static fromJSON(o: object): ReducedBeliefSet {

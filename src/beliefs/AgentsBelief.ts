@@ -1,20 +1,21 @@
-import { debug, error, info } from "src/utils/log";
-import ExternalAgent from "./ExternalAgent";
+import { debug, error } from "src/utils/log";
+import { ExternalAgent, MeAgent } from "./agents";
 import { AgentFromUpdate } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
+import { Position } from "./types";
 
 export default class AgentsBelief {
-  public me: ExternalAgent;
+  public me: MeAgent;
   private foreignAgents: Map<string, ExternalAgent> = new Map();
   private groupAgents: Map<string, ExternalAgent> = new Map();
 
-  constructor(me: ExternalAgent) {
-    this.me = me;
+  constructor(id: string, pos: Position) {
+    this.me = new MeAgent(id, pos);
   }
 
   static fromJSON(o: object): AgentsBelief {
     const me = ExternalAgent.fromJSON(o["me"]);
-    const belief = new AgentsBelief(me);
+    const belief = new AgentsBelief(me.getId(), me.getPos());
     belief.foreignAgents = new Map<string, ExternalAgent>(
       Object.entries(o["foreignAgents"]).map(([id, agent]) => [
         id,
@@ -117,11 +118,11 @@ export default class AgentsBelief {
         groupAgent.setSeen();
       }
     } else {
-      this.setGroupAgent(otherAgentsBelief.me);
+      this.setGroupAgent(ExternalAgent.fromMeAgent(otherAgentsBelief.me));
     }
 
     // If sender is in foreign agents, move it to group agents because we now know that it's in our group
-    this.promoteToGroupAgent(otherAgentId);
+    this.promoteToGroupAgent(ExternalAgent.fromMeAgent(otherAgentsBelief.me));
 
     // Now update all foreign agent knowledge
     for (const [
@@ -175,7 +176,7 @@ export default class AgentsBelief {
    * @param newAgent The new or updated group agent to add.
    */
   private upsertGroupAgent(newAgent: ExternalAgent): void {
-    this.promoteToGroupAgent(newAgent.getId());
+    this.promoteToGroupAgent(newAgent);
 
     const currentAgent = this.groupAgents.get(newAgent.getId());
     if (!currentAgent || newAgent.getLastSeen() > currentAgent.getLastSeen()) {
@@ -183,16 +184,11 @@ export default class AgentsBelief {
     }
   }
 
-  private promoteToGroupAgent(agentId: string): void {
-    const agent = this.foreignAgents.get(agentId);
+  private promoteToGroupAgent(newAgent: ExternalAgent): void {
+    const agent = this.foreignAgents.get(newAgent.getId());
     if (agent) {
-      this.groupAgents.set(agentId, agent);
-      this.foreignAgents.delete(agentId);
-      debug(`Promoted agent ${agentId} to group agents`);
-    } else {
-      info(
-        `Cannot promote agent ${agentId} to group agents - not found in foreign agents`,
-      );
+      this.foreignAgents.delete(agent.getId());
     }
+    this.setGroupAgent(newAgent);
   }
 }

@@ -3,11 +3,11 @@ import { Action } from "src/intents";
 import { TileType, Position } from "src/beliefs/types";
 import { error } from "src/utils/log";
 import { normalizePos } from "./utils";
-import ExternalAgent from "src/beliefs/ExternalAgent";
+import { MeAgent } from "src/beliefs/agents";
 
 export function computeDistanceVectors(
   map: TileType[][],
-  agents: ExternalAgent[],
+  agents: MeAgent[],
   start: Position,
 ): [number[][], (Position | null)[][]] {
   const startPos = normalizePos(start);
@@ -115,7 +115,7 @@ export function getPathFromDistances(
 
 export function dijkstra(
   map: TileType[][],
-  agents: ExternalAgent[],
+  agents: MeAgent[],
   start: Position,
   goal: Position,
 ): Action[] | null {
