@@ -186,7 +186,7 @@ export class PddlPlanner {
         )`;
 
       info("Creating new PDDL problem", this.agentId);
-      this.id = await fetch(config.solverHost + "/problem", {
+      this.id = await fetch(config.pddlSolverHost + "/problem", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -237,7 +237,7 @@ export class PddlPlanner {
     }
 
     debug("Posting PDDL problem update", this.agentId);
-    return await fetch(config.solverHost + "/solve", {
+    return await fetch(config.pddlSolverHost + "/solve", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -265,7 +265,7 @@ export class PddlPlanner {
       })
       .catch((err) => {
         error(`Error solving PDDL problem: ${err || "Unknown error"}`);
-        fetch(config.solverHost + "/problem", {
+        fetch(config.pddlSolverHost + "/problem", {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",

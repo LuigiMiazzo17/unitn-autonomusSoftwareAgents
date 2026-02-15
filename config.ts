@@ -2,8 +2,8 @@ import LOG_LEVELS from "src/utils/log/levels";
 
 export type PlannerType = "pddl" | "custom";
 
-const solverHost = process.env.SOLVER_HOST;
-if (!solverHost) {
+const pddlSolverHost = process.env.SOLVER_HOST;
+if (!pddlSolverHost) {
   throw new Error("SOLVER_HOST is not defined");
 }
 
@@ -19,15 +19,11 @@ if (!solverUrl && planner === "pddl") {
 }
 
 export default {
-  host: process.env.HOST || "http://localhost:8080",
+  deliverooHost: process.env.DELIVEROO_HOST || "http://localhost:8080",
   logLevel: LOG_LEVELS[logLevel as keyof typeof LOG_LEVELS],
   maxMoveFailCount: 3,
-  solverHost,
-  planner: (process.env.PLANNER as PlannerType) || "pddl",
-  pickupBranchingFactor: parseInt(
-    process.env.PICKUP_BRANCHING_FACTOR || "3",
-    10,
-  ),
+  pddlSolverHost,
+  plannerType: (process.env.PLANNER as PlannerType) || "pddl",
   deliveryOverPickupRatio: parseFloat(
     process.env.DELIVERY_OVER_PICKUP_RATIO || "0.8",
   ),

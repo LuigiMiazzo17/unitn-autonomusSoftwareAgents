@@ -67,7 +67,7 @@ export default class Agent {
   }
 
   static async build(options: AgentOptions): Promise<Agent> {
-    const apiConnection = new DeliverooApi(config.host, options.token);
+    const apiConnection = new DeliverooApi(config.deliverooHost, options.token);
     const agent = new Agent(
       apiConnection,
       await apiConnection.me,
