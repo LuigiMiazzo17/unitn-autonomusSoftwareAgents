@@ -1,6 +1,6 @@
 import { Tile } from "@unitn-asa/deliveroo-js-client";
-import { Position, SpawnableTiles, TileType } from "./types";
-import { normalizePos } from "./utils";
+import { Position, SpawnableTiles, TileType } from "src/beliefs/types";
+import { normalizePos } from "src/beliefs/utils";
 
 export default class MapBelief {
   private map: TileType[][] = [];

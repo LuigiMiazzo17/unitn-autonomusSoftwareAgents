@@ -1,7 +1,7 @@
 import { Queue } from "queue-typed";
-import { Action } from "src/intents";
 import { BeliefSet } from "src/beliefs";
-import { TileType, Position } from "src/beliefs/types";
+import { Position, TileType } from "src/beliefs/types";
+import { Action } from "src/planning/actions";
 import { error, warn } from "src/utils/log";
 import { computeDistanceVectors, dijkstra } from "./algorithms";
 

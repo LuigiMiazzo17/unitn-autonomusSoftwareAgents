@@ -1,5 +1,5 @@
 import { AgentFromUpdate } from "@unitn-asa/deliveroo-js-client";
-import { Position } from "./types";
+import { Position } from "src/beliefs/types";
 
 export class MeAgent {
   protected id: string;

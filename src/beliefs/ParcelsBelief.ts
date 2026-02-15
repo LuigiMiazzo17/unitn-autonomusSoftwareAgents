@@ -1,8 +1,8 @@
-import { debug, error } from "src/utils/log";
 import { Parcel as DeliverooParcelType } from "@unitn-asa/deliveroo-js-client";
-import Parcel from "./Parcel";
-import { MeAgent } from "./agents";
 import config from "config";
+import Parcel from "src/beliefs/Parcel";
+import { MeAgent } from "src/beliefs/agents";
+import { debug, error } from "src/utils/log";
 
 export default class ParcelsBelief {
   private knownParcels: Map<string, Parcel> = new Map<string, Parcel>();
@@ -131,7 +131,7 @@ export default class ParcelsBelief {
     for (const parcelId of this.getCarriedParcels(agent.getId())) {
       if (!parcelIds.includes(parcelId)) {
         this.knownParcels.delete(parcelId);
-        debug(`Parcel ${parcelId} dropped`);
+        debug(`Parcel ${parcelId} dropped`, agent.getId());
       }
     }
 

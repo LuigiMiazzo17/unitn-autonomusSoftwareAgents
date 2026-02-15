@@ -1,8 +1,8 @@
-import { debug, error } from "src/utils/log";
-import { ExternalAgent, MeAgent } from "./agents";
 import { AgentFromUpdate } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { Position } from "./types";
+import { ExternalAgent, MeAgent } from "src/beliefs/agents";
+import { Position } from "src/beliefs/types";
+import { debug, error } from "src/utils/log";
 
 export default class AgentsBelief {
   public me: MeAgent;

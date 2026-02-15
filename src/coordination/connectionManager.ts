@@ -1,5 +1,5 @@
-import Message, { HandshakeMsg, MessageType } from "src/coordination/message";
 import Agent from "src/agent";
+import Message, { HandshakeMsg, MessageType } from "src/coordination/message";
 import { warn } from "src/utils/log";
 
 export default class ConnectionManager {
