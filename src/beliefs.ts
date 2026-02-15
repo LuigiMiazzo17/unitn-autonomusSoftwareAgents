@@ -98,8 +98,8 @@ export class ReducedBeliefSet {
     }
   }
 
-  clearCarriedParcels(): void {
-    this.parcelsBelief.clearCarriedParcels(this.getAgentId());
+  deliverParcels(): void {
+    this.parcelsBelief.deliverParcels(this.getAgentId());
   }
 
   removeParcelsById(parcelIds: Set<string>): void {
@@ -187,10 +187,6 @@ export class BeliefSet extends ReducedBeliefSet {
 
   markCurrentSpawnableTileChecked() {
     this.mapBelief.markSpawnableTileChecked(this.getAgentPos());
-  }
-
-  deliverParcel(parcelId: string): void {
-    this.parcelsBelief.deliverParcel(parcelId);
   }
 
   updateKnownParcelsFromParcelUpdate(

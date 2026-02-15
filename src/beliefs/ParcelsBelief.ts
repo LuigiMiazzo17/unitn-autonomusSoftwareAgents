@@ -1,4 +1,4 @@
-import { debug, error, warn } from "src/utils/log";
+import { debug, error } from "src/utils/log";
 import { Parcel as DeliverooParcelType } from "@unitn-asa/deliveroo-js-client";
 import Parcel from "./Parcel";
 import { MeAgent } from "./agents";
@@ -44,7 +44,7 @@ export default class ParcelsBelief {
     debug(`Picked up parcel ${parcelId}`);
   }
 
-  clearCarriedParcels(agentId: string): void {
+  deliverParcels(agentId: string): void {
     for (const [parcelId, parcel] of this.knownParcels.entries()) {
       if (parcel.getCarriedBy() === agentId) {
         this.knownParcels.delete(parcelId);
@@ -69,15 +69,6 @@ export default class ParcelsBelief {
       }
     }
     return false;
-  }
-
-  deliverParcel(parcelId: string): void {
-    if (this.knownParcels.has(parcelId)) {
-      this.knownParcels.delete(parcelId);
-      debug(`Delivered parcel ${parcelId}`);
-    } else {
-      warn(`Cannot deliver parcel ${parcelId} - not carrying it`);
-    }
   }
 
   /**

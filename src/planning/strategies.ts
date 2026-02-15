@@ -42,31 +42,15 @@ export function getSortedClosestDeliveryTiles(
 export function generatePlanToPos(
   beliefs: BeliefSet,
   targetPos: Position,
-  extraActions: Action[] = [],
 ): Queue<Action> {
   const map = beliefs.getMap();
   const pos = beliefs.getAgentPos();
   const agents = beliefs.getAllAgents();
   const queue = new Queue<Action>();
 
-  // if (beliefs.isPickupAvailable()) {
-  //   queue.push(Action.PICKUP);
-  //   return queue;
-  // }
-  //
-  // if (beliefs.isDeliveryAvailable()) {
-  //   queue.push(Action.DELIVER);
-  //   return queue;
-  // }
-
   if (pos.x === targetPos.x && pos.y === targetPos.y) {
-    warn(
-      `Already on target tile at (${targetPos.x}, ${targetPos.y}), executing extra actions if any`,
-    );
-    for (const action of extraActions) {
-      queue.push(action);
-    }
-    return queue;
+    warn(`Already on target tile at (${targetPos.x}, ${targetPos.y})`);
+    return new Queue<Action>([Action.NOOP]);
   }
 
   const pathToTarget = dijkstra(map, agents, pos, targetPos);
@@ -77,10 +61,6 @@ export function generatePlanToPos(
   } else {
     error(`No path found to target tile at (${targetPos.x}, ${targetPos.y})`);
     return new Queue<Action>([Action.NOOP]);
-  }
-
-  for (const action of extraActions) {
-    queue.push(action);
   }
 
   return queue;

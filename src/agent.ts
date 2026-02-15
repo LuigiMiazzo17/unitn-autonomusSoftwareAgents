@@ -311,13 +311,8 @@ export default class Agent {
     const isMasterAgent = this.beliefs.getMasterAgentId() === this.id;
 
     // 1. Check if beliefs changed → invalidate current plan
-    const beliefsChecksum = this.beliefs.getChecksumOfBeliefs();
-    if (beliefsChecksum != this.beliefsChecksum) {
-      debug(`Beliefs checksum before: ${this.beliefsChecksum}`, this.id);
-      debug(`Beliefs checksum after: ${beliefsChecksum}`, this.id);
-      this.beliefsChecksum = beliefsChecksum;
+    if (this.updateBeliefsChecksum()) {
       info(`Beliefs changed, clearing plan`, this.id);
-
       this.plan = new Queue<Action>();
 
       // TODO: Invalidate plan of slaves
@@ -437,31 +432,34 @@ export default class Agent {
     const result = await this.apiConnection.emitPutdown();
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
-      // Remove all parcels that we thought were deliverable, since they are not
-      this.beliefs.clearCarriedParcels();
       return false;
     }
-    for (const parcel of result) {
-      this.beliefs.deliverParcel(parcel.id);
-    }
+    this.beliefs.deliverParcels();
     return true;
   }
 
   async generatePlan(intention: Intention): Promise<Queue<Action>> {
+    let plan: Queue<Action>;
     switch (intention.kind) {
       case "explore_spawn":
-        return generatePlanToPos(this.beliefs, intention.tile.pos);
+        plan = generatePlanToPos(this.beliefs, intention.tile.pos);
+        break;
 
       case "deliver_parcels":
-        return generatePlanToPos(this.beliefs, intention.pos, [Action.DELIVER]);
-      // return generatePlanToPos(this.beliefs, intention.pos);
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.DELIVER);
+        break;
 
       case "go_pickup":
-        return generatePlanToPos(this.beliefs, intention.pos, [Action.PICKUP]);
-      // return generatePlanToPos(this.beliefs, intention.pos);
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.PICKUP);
+        break;
 
       case "noop":
-        return new Queue<Action>([Action.NOOP]);
+        plan = new Queue<Action>([Action.NOOP]);
+        break;
     }
+
+    return plan;
   }
 }
