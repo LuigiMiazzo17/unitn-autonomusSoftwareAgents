@@ -1,17 +1,27 @@
 import Agent from "src/agent";
 
-// const agent = await Agent.build({
-//   token:
-//     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMjI3NyIsIm5hbWUiOiJtaW5pbWlfbG9yaSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzU2MzI5MzA3fQ.o_-KQSi-mpQFdgUOVIrZcoe5nlMQJazXfC991n1wNLs",
-// });
+const args = process.argv.slice(2);
 
-const agent = await Agent.build({});
-const agent1 = await Agent.build({});
+const n = parseInt(args[0] ?? "");
+if (isNaN(n) || n < 1) {
+  console.error("Usage: app.ts <number_of_agents> [--timeout <seconds>]");
+  process.exit(1);
+}
 
-agent.run();
-agent1.run();
+const timeoutIdx = args.indexOf("--timeout");
+const timeoutSec =
+  timeoutIdx !== -1 ? parseInt(args[timeoutIdx + 1] ?? "") : NaN;
+if (timeoutIdx !== -1 && (isNaN(timeoutSec) || timeoutSec < 1)) {
+  console.error("--timeout must be followed by a positive integer (seconds)");
+  process.exit(1);
+}
 
-setTimeout(() => {
-  agent.stop();
-  agent1.stop();
-}, 60000);
+const agents = await Promise.all(
+  Array.from({ length: n }, () => Agent.build({})),
+);
+
+agents.forEach((agent) => agent.run());
+
+if (!isNaN(timeoutSec)) {
+  setTimeout(() => agents.forEach((agent) => agent.stop()), timeoutSec * 1000);
+}
