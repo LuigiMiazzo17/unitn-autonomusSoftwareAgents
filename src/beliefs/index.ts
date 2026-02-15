@@ -5,12 +5,12 @@ import {
 } from "@unitn-asa/deliveroo-js-client";
 import crypto from "crypto";
 import { debug } from "src/utils/log";
-import { Position, SpawnableTiles, TileType } from "./beliefs/types";
-import Parcel from "./beliefs/Parcel";
-import { ExternalAgent } from "./beliefs/agents";
-import MapBelief from "./beliefs/MapBelief";
-import AgentsBelief from "./beliefs/AgentsBelief";
-import ParcelsBelief from "./beliefs/ParcelsBelief";
+import { Position, SpawnableTiles, TileType } from "src/beliefs/types";
+import Parcel from "src/beliefs/Parcel";
+import { ExternalAgent } from "src/beliefs/agents";
+import MapBelief from "src/beliefs/MapBelief";
+import AgentsBelief from "src/beliefs/AgentsBelief";
+import ParcelsBelief from "src/beliefs/ParcelsBelief";
 
 export class ReducedBeliefSet {
   protected agentsBelief: AgentsBelief;
