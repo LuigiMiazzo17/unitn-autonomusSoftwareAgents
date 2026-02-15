@@ -179,7 +179,7 @@ export default class Agent {
     const deletedAgents = this.beliefs.updateAgentsFromSensing(agents);
 
     if (this.updateBeliefsChecksum() && config.recalculatePlanOnParcelUpdate) {
-      info(`Parcels changed, dropping plan`, this.id);
+      info(`Agents changed, dropping plan`, this.id);
       this.plan = new Queue<Action>();
     }
 
@@ -327,6 +327,8 @@ export default class Agent {
         await this.centralizedPlanning();
       } else if (config.modeOfOperation === "decentralized") {
         await this.decentralizedPlanning();
+      } else if (config.modeOfOperation === "pddl") {
+        await this.pddlPlanning();
       } else {
         error(`Unknown mode of operation: ${config.modeOfOperation}`, this.id);
       }
@@ -358,6 +360,23 @@ export default class Agent {
     this.plan = await this.generatePlan(intention);
     debug(
       `Generated plan for intention ${intention.kind}: ${this.plan.toArray().map((a) => Action[a])}`,
+      this.id,
+    );
+  }
+
+  private async pddlPlanning(): Promise<void> {
+    info(`Plan is empty, generating new plan with PDDL planner`, this.id);
+
+    const plan = await this.pddlPlanner.solvePddlProblem();
+    if (plan) {
+      this.plan = new Queue<Action>(plan);
+    } else {
+      error(`PDDL planner failed to find a plan, quitting`, this.id);
+      this.stop();
+    }
+
+    debug(
+      `Generated plan with PDDL planner: ${this.plan.toArray().map((a) => Action[a])}`,
       this.id,
     );
   }

@@ -282,14 +282,10 @@ def define_problem():
     if pddl_problem_str is None:
         return jsonify({"status": "error", "msg": "No problem provided"}), 400
 
-    # try:
     id = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
     problem = PDDLReader().parse_problem_string(domain, pddl_problem_str)
     REPLANNERS[id] = CustomReplanner(problem)
     return jsonify({"status": "success", "id": id}), 201
-    # except Exception as e:
-    #     print(e)
-    #     return jsonify({"status": "error", "msg": str(e)}), 500
 
 
 @app.route("/problem", methods=["DELETE"])

@@ -80,7 +80,6 @@ export class PddlPlanner {
   }
 
   private getDynamicObjectsAndInitAndGoal(): [string[], string[], string] {
-    const parcels = this.beliefSet.getParcels();
     const agents = this.beliefSet
       .getAllAgents()
       .filter((a) => a.getId() !== this.agentId);
@@ -90,7 +89,7 @@ export class PddlPlanner {
     const objects = [];
     const init = [];
 
-    for (const parcel of parcels) {
+    for (const parcel of this.beliefSet.getParcels()) {
       if (
         parcel.getCarriedBy() !== null &&
         parcel.getCarriedBy() !== this.agentId
@@ -119,20 +118,33 @@ export class PddlPlanner {
     init.push(`(at agent1 tile${pos.x}_${pos.y})`);
 
     const goal = [];
-    for (const parcel of parcels) {
-      if (parcel.getCarriedBy()) {
-        continue;
+
+    for (const parcel of this.beliefSet.getParcels()) {
+      if (parcel.getCarriedBy() === null) {
+        goal.push(`(delivered parcel${parcel.getId()})`);
       }
-      goal.push(`(delivered parcel${parcel.getId()})`);
     }
 
-    debug("PddlProblem dynamic objects generated", this.agentId);
+    if (goal.length === 0) {
+      // No parcel known, go to a random spawn tile
+      const spawnTiles = this.beliefSet.getSpawnableTiles();
+      if (spawnTiles.length > 0) {
+        const spawnTile =
+          spawnTiles[Math.floor(Math.random() * spawnTiles.length)];
+        goal.push(`(at agent1 tile${spawnTile.pos.x}_${spawnTile.pos.y})`);
+      } else {
+        error("No spawnable tiles found for goal generation", this.agentId);
+        process.exit(1); // TODO: handle this case better
+      }
+    }
+
     let goalStr = goal.length > 1 ? "\n        (and\n        " : "\n        ";
     goalStr += goal.join("\n        ");
     if (goal.length > 1) {
       goalStr += "\n        )";
     }
 
+    debug("PddlProblem dynamic objects generated", this.agentId);
     return [objects, init, goalStr];
   }
 

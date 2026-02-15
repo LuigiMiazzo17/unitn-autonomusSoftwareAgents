@@ -2,9 +2,9 @@ import LOG_LEVELS from "src/utils/log/levels";
 
 export type PlannerType = "pddl" | "custom";
 
-const pddlSolverHost = process.env.SOLVER_HOST;
+const pddlSolverHost = process.env.PDDL_SOLVER_HOST;
 if (!pddlSolverHost) {
-  throw new Error("SOLVER_HOST is not defined");
+  throw new Error("PDDL_SOLVER_HOST is not defined");
 }
 
 const logLevel = (process.env.LOG_LEVEL || "warn").toUpperCase();
@@ -12,18 +12,11 @@ if (!Object.keys(LOG_LEVELS).includes(logLevel)) {
   throw new Error(`Invalid log level: ${logLevel}`);
 }
 
-const planner = (process.env.PLANNER || "pddl").toLowerCase() as PlannerType;
-const solverUrl = process.env.SOLVER_URL;
-if (!solverUrl && planner === "pddl") {
-  throw new Error("SOLVER_URL is not defined");
-}
-
 export default {
   deliverooHost: process.env.DELIVEROO_HOST || "http://localhost:8080",
+  pddlSolverHost,
   logLevel: LOG_LEVELS[logLevel as keyof typeof LOG_LEVELS],
   maxMoveFailCount: 3,
-  pddlSolverHost,
-  plannerType: (process.env.PLANNER as PlannerType) || "pddl",
   deliveryOverPickupRatio: parseFloat(
     process.env.DELIVERY_OVER_PICKUP_RATIO || "0.8",
   ),
