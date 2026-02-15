@@ -5,6 +5,7 @@ import {
   computeDistanceVectors,
   getSortedClosestDeliveryTiles,
 } from "src/planning";
+import { normalizePos } from "src/utils/math";
 
 export default function generateIntentions(beliefs: BeliefSet): Intention[] {
   const intentions: Intention[] = [];
@@ -67,7 +68,7 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
 
   for (const parcel of handoffParcels) {
     for (const agentPos of Array.from(beliefs.getGroupAgents()).map((a) =>
-      a.getPos(),
+      normalizePos(a.getPos()),
     )) {
       for (const nearPos of near(agentPos)) {
         if (

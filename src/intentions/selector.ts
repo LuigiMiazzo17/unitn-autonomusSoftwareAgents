@@ -31,7 +31,7 @@ function calculatePriority(intention: Intention): number {
       return intention.distance * config.deliveryOverPickupRatio;
 
     case "handoff":
-      return intention.distance * 2;
+      return intention.distance * 20;
 
     case "explore_spawn": {
       return (

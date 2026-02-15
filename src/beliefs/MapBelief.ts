@@ -60,7 +60,8 @@ export default class MapBelief {
     if (!this.contains(pos)) {
       return null;
     }
-    return this.map[pos.y][pos.x];
+    const norm = normalizePos(pos);
+    return this.map[norm.y][norm.x];
   }
 
   markSpawnableTileChecked(pos: Position): void {
