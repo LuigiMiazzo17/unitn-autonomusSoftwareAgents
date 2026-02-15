@@ -217,8 +217,8 @@ export class BeliefSet extends ReducedBeliefSet {
     this.mapBelief.markSpawnableTileChecked(this.getAgentPos());
   }
 
-  markVisibleSpawnableTilesChecked(sensingDistance: number): void {
-    this.mapBelief.markSpawnableTilesCheckedInRadius(
+  markVisibleSpawnableTilesSeen(sensingDistance: number): void {
+    this.mapBelief.markSpawnableTilesSeenInRadius(
       this.getAgentPos(),
       sensingDistance,
     );

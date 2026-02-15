@@ -12,5 +12,5 @@ export type Position = {
 
 export type SpawnableTiles = {
   pos: Position;
-  checkedCount: number;
+  lastSeenTimestamp: number;
 };

@@ -3,6 +3,7 @@ import config from "config";
 import Parcel from "src/beliefs/Parcel";
 import { MeAgent } from "src/beliefs/agents";
 import { debug, error } from "src/utils/log";
+import { manhattanDistance } from "src/utils/math";
 
 export default class ParcelsBelief {
   private knownParcels: Map<string, Parcel> = new Map<string, Parcel>();
@@ -144,17 +145,32 @@ export default class ParcelsBelief {
       }
     }
 
+    // Try to find if in the list of parcels we are listed as the carrier. If we
+    // find it use that position as our position since this routine is
+    // asynchronous.
+
+    const safetyMargin = 2;
+    const usePos = agent.getPos();
+
+    for (const parcel of parcels) {
+      if (parcel.carriedBy === agent.getId()) {
+        usePos.x = parcel.x;
+        usePos.y = parcel.y;
+      }
+    }
+
     // Get all known parcelIds that are within parcel sensing range,
     // if not present in the update, remove them because they are expired.
-    // Distance is not gemoetric, but the number of tiles between the agent and
-    // the parcel, considering also walls
     const deletedParcelIds = new Set<string>();
     for (const [parcelId, parcel] of this.knownParcels.entries()) {
-      const distance = agent.manhattanDistance(parcel.getPos());
+      const distance = manhattanDistance(parcel.getPos(), usePos);
       if (
-        distance <= config.parcelSensingDistance &&
+        distance < config.parcelSensingDistance - safetyMargin &&
         !parcelIds.includes(parcelId)
       ) {
+        console.log("DELETING");
+        console.log(parcels);
+        console.log(agent.getPos());
         this.knownParcels.delete(parcelId);
         deletedParcelIds.add(parcelId);
         debug(

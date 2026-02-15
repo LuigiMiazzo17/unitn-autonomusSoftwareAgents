@@ -36,7 +36,7 @@ function calculatePriority(intention: Intention): number {
     case "explore_spawn": {
       return (
         100 +
-        intention.tile.checkedCount * 1_000_000 +
+        intention.tile.lastSeenTimestamp * 1_000_000 +
         intention.tile.pos.y * 1_000 +
         intention.tile.pos.x
       );
