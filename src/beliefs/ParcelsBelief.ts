@@ -154,7 +154,7 @@ export default class ParcelsBelief {
       }
     }
 
-    debug(`Updated parcels: ${this.knownParcels.size}`);
+    debug(`Updated parcels: ${this.knownParcels.size}`, agent.getId());
     return deletedParcelIds;
   }
 }
