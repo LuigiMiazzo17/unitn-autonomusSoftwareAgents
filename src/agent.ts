@@ -1,27 +1,28 @@
 import {
+  AgentFromUpdate as DeliverooAgentFromUpdate,
   Agent as DeliverooAgentType,
   DeliverooApi,
+  Parcel,
   Tile,
   Timestamp,
-  Parcel,
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
-import { BeliefSet, Position } from "src/beliefs";
-import { debug, info, warn, error } from "src/utils/log";
-import { PddlPlanner } from "src/pddl";
-import { Intent, CurrentOperationMode } from "src/intents";
 import { Queue } from "queue-typed";
-
-const FRAME_ADVANCE_INTERVAL = 100;
+import { BeliefSet } from "src/beliefs";
+import { Position } from "src/beliefs/types";
+import ConnectionManager from "src/coordination/connectionManager";
+import Message, {
+  AgentsDeletedMsg,
+  IntentionMsg,
+  ParcelsDeletedMsg,
+} from "src/coordination/message";
+import { Intention, getIntention } from "src/intentions";
+import { Action } from "src/intents";
+import { PddlPlanner, generatePlanToPos, isInsideMap } from "src/planning";
+import { debug, error, info, warn } from "src/utils/log";
 
 export type AgentOptions = {
   token?: string | null;
-};
-
-type Message = {
-  type: "handshake" | "handshake-ack" | "parcels";
-  agentType: "svejaMacachi" | unknown;
-  [key: string]: unknown;
 };
 
 export default class Agent {
@@ -30,88 +31,159 @@ export default class Agent {
   private id: string;
   private beliefs: BeliefSet;
   private pddlPlanner: PddlPlanner;
+  private connectionManager: ConnectionManager;
   private lastTimestampUpdate: Timestamp | null = null;
-  private plan: Queue<Intent> = new Queue<Intent>();
-  private currentOperationMode: CurrentOperationMode =
-    CurrentOperationMode.HUNTING;
+  private plan: Queue<Action> = new Queue<Action>();
   private moveFailCount: number = 0;
   private currentScore: number = 0;
   private stopped: boolean = false;
   private beliefsChecksum: string = "";
 
-  onMap: (width: number, height: number, tiles: Tile[]) => void = (
+  static readonly FRAME_ADVANCE_INTERVAL = 100;
+
+  constructor(
+    apiConnection: DeliverooApi,
+    me: DeliverooAgentType,
+    map: { width: number; height: number; tiles: Tile[] },
+  ) {
+    this.apiConnection = apiConnection;
+
+    this.id = me.id;
+
+    this.apiConnection.onMap(this.onMap);
+    this.apiConnection.onAgentConnected(this.onAgentConnected);
+    this.apiConnection.onMsg(this.onMsg);
+    this.apiConnection.onParcelsSensing(this.onParcelSensing);
+    this.apiConnection.onAgentsSensing(this.onAgentsSensing);
+    this.apiConnection.onYou(this.onYou);
+    this.apiConnection.onDisconnect(this.onDisconnect);
+
+    this.beliefs = new BeliefSet(me.id, map, {
+      x: Math.floor(me.x),
+      y: Math.floor(me.y),
+    });
+    this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
+    this.connectionManager = new ConnectionManager(this);
+  }
+
+  static async build(options: AgentOptions): Promise<Agent> {
+    const apiConnection = new DeliverooApi(config.host, options.token);
+    const agent = new Agent(
+      apiConnection,
+      await apiConnection.me,
+      await apiConnection.map,
+    );
+    agent.connectionManager.start();
+
+    return agent;
+  }
+
+  private onDisconnect: () => void = () => {
+    error(`Disconnected from server`, this.id);
+    this.stopped = true;
+  };
+
+  private onMap: (width: number, height: number, tiles: Tile[]) => void = (
     width,
     height,
     tiles,
   ) => {
     info(`Map update event: ${width}x${height}`, this.id);
     this.beliefs.updateMap(width, height, tiles);
+    this.plan = new Queue<Action>();
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onMsg: (senderId: string, _: unknown, msg: any) => void = (
+  private onMsg: (senderId: string, _: unknown, msg: any) => void = (
     senderId,
-    _,
-    msg,
+    _, // unused agent name
+    any_msg,
   ) => {
-    info(`Received message: ${JSON.stringify(msg)}`, this.id);
-
-    if (!msg.agentType || msg.agentType !== "svejaMacachi") {
-      warn(`Ignoring message from unknown agent type`, this.id);
+    let msg = any_msg as Message; // HACK: try clause in JS make type inference fail
+    try {
+      msg = Message.fromJSON(any_msg);
+    } catch (e) {
+      console.error(e);
+      error(
+        `Failed to parse message: ${e instanceof Error ? e.message : String(e)}`,
+        this.id,
+      );
+      return;
     }
 
-    switch (msg.type) {
-      case "handshake": {
-        info(`Handshake received from agent ${senderId}`, this.id);
-        this.apiConnection.emitSay(senderId, {
-          type: "handshake-ack",
-          agentType: "svejaMacachi",
-        } as Message);
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
-      case "handshake-ack": {
-        info(`Adding known agent ${senderId}`, this.id);
-        this.beliefs.addKnownGroupAgent(senderId);
-        break;
-      }
+    // Merge knowledge from the message into our beliefs about the sender agent
+    this.beliefs.merge(msg.getReducedBeliefSet());
+
+    const msgContent = msg.getContent();
+
+    if (msgContent instanceof ParcelsDeletedMsg) {
+      debug(
+        `ParcelsDeletedMsg received from agent ${senderId}, removing parcels ${msgContent.getParcelIds()}`,
+        this.id,
+      );
+      this.beliefs.removeParcelsById(msgContent.getParcelIds());
+    } else if (msgContent instanceof AgentsDeletedMsg) {
+      debug(
+        `AgentsDeletedMsg received from agent ${senderId}, removing agents ${msgContent.getAgentIds()}`,
+        this.id,
+      );
+      this.beliefs.removeForeignAgentsById(msgContent.getAgentIds());
+    } else if (msgContent instanceof IntentionMsg) {
+      debug(
+        `IntentionMsg received from agent ${senderId}, intention: ${msgContent.getIntention().kind}`,
+        this.id,
+      );
+      // TODO: Remove the received intention from our intention list
     }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onAgentConnected: (state: string, agent: any) => void = (state, agent) => {
+  private onAgentConnected: (state: string, agent: any) => void = (
+    state,
+    agent,
+  ) => {
     debug(
       `Agent connected: '${JSON.stringify(agent)}’ is now ${state}`,
       this.id,
     );
   };
 
-  onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
+  private onParcelSensing: (parcels: Parcel[]) => void = (parcels) => {
     debug(`Parcels sensing event: ${parcels.length} parcels`, this.id);
-    const somethingChanged = this.beliefs.updateParcels(parcels);
-    if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
+    const deletedParcels =
+      this.beliefs.updateKnownParcelsFromParcelUpdate(parcels);
+
+    if (this.updateBeliefsChecksum() && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
-      this.plan = new Queue<Intent>();
+      this.plan = new Queue<Action>();
+    }
+
+    if (deletedParcels.size > 0) {
+      this.connectionManager.sendBroadcastMsg(
+        new ParcelsDeletedMsg(deletedParcels),
+      );
     }
   };
 
-  onAgentsSensing: (agents: DeliverooAgentType[]) => void = (agents) => {
+  private onAgentsSensing: (agents: DeliverooAgentFromUpdate[]) => void = (
+    agents,
+  ) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
-    const newAgents = agents.filter(
-      (a) => a.id !== this.id && !this.beliefs.getKnwonAgentsIds().has(a.id),
-    );
-    this.beliefs.updateAgents(agents);
-    for (const agent of newAgents) {
-      info(`Sending handshake to agent ${agent.id}`, this.id);
-      this.apiConnection.emitSay(agent.id, {
-        type: "handshake",
-        agentType: "svejaMacachi",
-      } as Message);
+    const deletedAgents = this.beliefs.updateAgentsFromSensing(agents);
+
+    if (this.updateBeliefsChecksum() && config.recalculatePlanOnParcelUpdate) {
+      info(`Parcels changed, dropping plan`, this.id);
+      this.plan = new Queue<Action>();
+    }
+
+    if (deletedAgents.size > 0) {
+      this.connectionManager.sendBroadcastMsg(
+        new AgentsDeletedMsg(deletedAgents),
+      );
     }
   };
 
-  onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
+  private onYou: (agent: DeliverooAgentType, timestamp: Timestamp) => void = (
     agent,
     timestamp,
   ) => {
@@ -129,7 +201,7 @@ export default class Agent {
     if (this.moveFailCount >= config.maxMoveFailCount) {
       agent.x = Math.floor(agent.x);
       agent.y = Math.floor(agent.y);
-      this.beliefs.updatePos({
+      this.beliefs.updateAgentPos({
         x: Math.floor(agent.x),
         y: Math.floor(agent.y),
       });
@@ -138,8 +210,7 @@ export default class Agent {
         `Too many move failures, resetting position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
         this.id,
       );
-      this.plan = new Queue<Intent>();
-      this.currentOperationMode = CurrentOperationMode.HUNTING;
+      this.plan = new Queue<Action>();
     }
 
     debug(
@@ -151,37 +222,16 @@ export default class Agent {
     this.lastTimestampUpdate = timestamp;
   };
 
-  constructor(
-    apiConnection: DeliverooApi,
-    me: DeliverooAgentType,
-    map: { width: number; height: number; tiles: Tile[] },
-  ) {
-    this.apiConnection = apiConnection;
-
-    this.id = me.id;
-
-    this.apiConnection.onMap(this.onMap);
-    this.apiConnection.onAgentConnected(this.onAgentConnected);
-    this.apiConnection.onMsg(this.onMsg);
-    this.apiConnection.onParcelsSensing(this.onParcelSensing);
-    this.apiConnection.onAgentsSensing(this.onAgentsSensing);
-    this.apiConnection.onYou(this.onYou);
-
-    this.beliefs = new BeliefSet(me.id, map, {
-      x: Math.floor(me.x),
-      y: Math.floor(me.y),
-    });
-    this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
-  }
-
-  static async build(options: AgentOptions): Promise<Agent> {
-    const apiConnection = new DeliverooApi(config.host, options.token);
-
-    return new Agent(
-      apiConnection,
-      await apiConnection.me,
-      await apiConnection.map,
-    );
+  /**
+   * Updates the beliefs checksum and returns true if it changed since the last update
+   * This is used to detect if the beliefs have changed since the last time we checked, so we can decide if we need to revision the intentions
+   * @returns true if the beliefs checksum changed since the last update, false otherwise
+   */
+  private updateBeliefsChecksum(): boolean {
+    const newChecksum = this.beliefs.getChecksumOfBeliefs();
+    const changed = this.beliefsChecksum !== newChecksum;
+    this.beliefsChecksum = newChecksum;
+    return changed;
   }
 
   async run(): Promise<void> {
@@ -193,7 +243,7 @@ export default class Agent {
     this.apiConnection.connect();
 
     info(
-      `Agent started at position (${this.beliefs.getPos().x}, ${this.beliefs.getPos().y})`,
+      `Agent started at position (${this.beliefs.getAgentPos().x}, ${this.beliefs.getAgentPos().y})`,
       this.id,
     );
 
@@ -201,12 +251,12 @@ export default class Agent {
 
     while (!this.stopped) {
       const start = Date.now();
-      await this.frameAdvance();
+      await this.nextFrame();
 
       const elapsed = Date.now() - start;
-      if (elapsed < FRAME_ADVANCE_INTERVAL) {
+      if (elapsed < Agent.FRAME_ADVANCE_INTERVAL) {
         await new Promise((resolve) =>
-          setTimeout(resolve, FRAME_ADVANCE_INTERVAL - elapsed),
+          setTimeout(resolve, Agent.FRAME_ADVANCE_INTERVAL - elapsed),
         );
       }
 
@@ -222,6 +272,14 @@ export default class Agent {
     this.stopped = true;
   }
 
+  isStopped(): boolean {
+    return this.stopped;
+  }
+
+  getId(): string {
+    return this.id;
+  }
+
   getScore(): number {
     return this.currentScore;
   }
@@ -230,81 +288,98 @@ export default class Agent {
     return this.frame;
   }
 
-  async frameAdvance(): Promise<void> {
-    if (this.frame % 100 === 0) {
-      debug(`Frame advanced to ${this.frame}`, this.id);
+  getApi(): DeliverooApi {
+    return this.apiConnection;
+  }
+
+  getBeliefSet(): BeliefSet {
+    return this.beliefs;
+  }
+
+  async nextFrame(): Promise<void> {
+    this.frame++;
+
+    const map = this.beliefs.getMap();
+    const pos = this.beliefs.getAgentPos();
+    if (!isInsideMap(map, pos)) {
+      error(`Position of agent out of bounds: (${pos.x}, ${pos.y})`);
+      return;
     }
 
-    const beliefsChecksum = this.beliefs.getChecksumOfBeliefs(
-      this.currentOperationMode,
-    );
-    if (beliefsChecksum != this.beliefsChecksum) {
-      debug(`Beliefs checksum before: ${this.beliefsChecksum}`, this.id);
-      debug(`Beliefs checksum after: ${beliefsChecksum}`, this.id);
-      this.beliefsChecksum = beliefsChecksum;
+    // 1. Check if beliefs changed → invalidate current plan
+    if (this.updateBeliefsChecksum()) {
       info(`Beliefs changed, clearing plan`, this.id);
-
-      this.plan = new Queue<Intent>();
+      this.plan = new Queue<Action>();
     }
 
-    let optionalIntent = this.plan.shift();
+    // 2. Dequeue next action from current plan
+    const nextAction = this.plan.shift();
 
-    if (optionalIntent === undefined) {
-      this.plan = await this.generateIntents();
-
-      optionalIntent = this.plan.shift();
-      if (optionalIntent === undefined) {
-        warn(`Correctly got a plan, but no intent to execute`, this.id);
-        return;
+    // 3. If plan is empty → select intention → generate new plan
+    if (nextAction === undefined) {
+      if (config.modeOfOperation === "centralized") {
+        await this.centralizedPlanning();
+      } else if (config.modeOfOperation === "decentralized") {
+        await this.decentralizedPlanning();
+      } else {
+        error(`Unknown mode of operation: ${config.modeOfOperation}`, this.id);
       }
+      return;
     }
 
-    const actionResult = await this.executeIntent(optionalIntent);
+    // 4. Execute the action
+    const actionResult = await this.executeAction(nextAction);
+
+    // 5. Handle failure
     if (!actionResult) {
-      warn(`Action failed, replanning`, this.id);
-      switch (optionalIntent) {
-        case Intent.MOVE_UP:
-        case Intent.MOVE_DOWN:
-        case Intent.MOVE_LEFT:
-        case Intent.MOVE_RIGHT: {
-          this.plan.addAt(0, optionalIntent);
-          break;
-        }
-        default: {
-          this.plan = new Queue<Intent>();
-          this.currentOperationMode = CurrentOperationMode.HUNTING;
-          break;
-        }
-      }
+      warn(`Action failed, clearing plan`, this.id);
+      this.plan = new Queue<Action>();
     } else {
       debug(`Action succeeded`, this.id);
     }
-
-    this.frame++;
   }
 
-  async executeIntent(intent: Intent): Promise<boolean> {
-    debug(`Executing intent: ${Intent[intent]}`, this.id);
+  private async centralizedPlanning(): Promise<void> {
+    // TODO: Implement centralized mode of operation
+    throw new Error("Centralized mode of operation not implemented yet");
+  }
 
-    const pos = this.beliefs.getPos();
+  private async decentralizedPlanning(): Promise<void> {
+    info(`Plan is empty, selecting new intention and generating plan`, this.id);
+    const intention = getIntention(this.beliefs);
 
-    switch (intent) {
-      case Intent.MOVE_UP:
+    this.connectionManager.sendBroadcastMsg(new IntentionMsg(intention));
+    this.plan = await this.generatePlan(intention);
+    debug(
+      `Generated plan for intention ${intention.kind}: ${this.plan.toArray().map((a) => Action[a])}`,
+      this.id,
+    );
+  }
+
+  async executeAction(action: Action): Promise<boolean> {
+    debug(`Executing action: ${Action[action]}`, this.id);
+
+    const pos = this.beliefs.getAgentPos();
+
+    switch (action) {
+      case Action.MOVE_UP:
         return await this.move("up", { x: pos.x, y: pos.y + 1 });
-      case Intent.MOVE_DOWN:
+      case Action.MOVE_DOWN:
         return await this.move("down", { x: pos.x, y: pos.y - 1 });
-      case Intent.MOVE_LEFT:
+      case Action.MOVE_LEFT:
         return await this.move("left", { x: pos.x - 1, y: pos.y });
-      case Intent.MOVE_RIGHT:
+      case Action.MOVE_RIGHT:
         return await this.move("right", { x: pos.x + 1, y: pos.y });
-      case Intent.PICKUP:
+      case Action.PICKUP:
         return await this.pickup();
-      case Intent.DELIVER:
+      case Action.DELIVER:
         return await this.deliver();
-      case Intent.NOOP:
+      case Action.HANDOFF:
+        return await this.deliver(true);
+      case Action.NOOP:
         return true;
       default:
-        error(`Unknown intent: ${intent}`, this.id);
+        error(`Unknown action: ${action}`, this.id);
         return false;
     }
   }
@@ -328,7 +403,10 @@ export default class Agent {
       this.moveFailCount += 1;
       return false;
     }
-    this.beliefs.updatePos(expected);
+    this.beliefs.updateAgentPos(expected);
+    if (this.beliefs.isOnSpawnableTile()) {
+      this.beliefs.markCurrentSpawnableTileChecked();
+    }
     return true;
   }
 
@@ -345,53 +423,47 @@ export default class Agent {
     return true;
   }
 
-  async deliver(): Promise<boolean> {
+  async deliver(handoff: boolean = false): Promise<boolean> {
+    // NOTE: This must be before the API call because otherwise stuff will be overwritten by the onParcelSensing hook.
+    if (handoff) this.beliefs.handoffParcels();
+    else this.beliefs.deliverParcels();
+
     const result = await this.apiConnection.emitPutdown();
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
-      // Remove all parcels that we thought were deliverable, since they are not
-      this.beliefs.clearParcels();
       return false;
-    }
-    for (const parcel of result) {
-      this.beliefs.deliverParcel(parcel.id);
     }
     return true;
   }
 
-  async generateIntents(): Promise<Queue<Intent>> {
-    if (this.beliefs.getParcels().length === 0) {
-      this.currentOperationMode = CurrentOperationMode.HUNTING;
-      debug("Set HUNTING mode", this.id);
-    } else {
-      this.currentOperationMode = CurrentOperationMode.PLANNER;
-      debug("Set Planner mode", this.id);
+  async generatePlan(intention: Intention): Promise<Queue<Action>> {
+    let plan: Queue<Action>;
+    switch (intention.kind) {
+      case "explore_spawn":
+        plan = generatePlanToPos(this.beliefs, intention.tile.pos);
+        break;
+
+      case "handoff": {
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.HANDOFF);
+        break;
+      }
+
+      case "deliver_parcels":
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.DELIVER);
+        break;
+
+      case "go_pickup":
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.PICKUP);
+        break;
+
+      case "noop":
+        plan = new Queue<Action>([Action.NOOP]);
+        break;
     }
 
-    switch (this.currentOperationMode) {
-      case CurrentOperationMode.HUNTING: {
-        info(`Planning in HUNTING mode`, this.id);
-        return this.beliefs.getHuntingMovePlan();
-      }
-      case CurrentOperationMode.PLANNER: {
-        info(`Planning in Planner mode`, this.id);
-        const plan =
-          config.planner === "pddl"
-            ? await this.pddlPlanner.solvePddlProblem()
-            : this.beliefs.getSmartPlan();
-
-        if (plan === null) {
-          warn(`Planner planning failed, switching to HUNTING mode`, this.id);
-          this.currentOperationMode = CurrentOperationMode.HUNTING;
-          return this.beliefs.getHuntingMovePlan();
-        } else {
-          return plan;
-        }
-      }
-      default: {
-        error(`Unknown operation mode: ${this.currentOperationMode}`, this.id);
-        throw new Error(`Unknown operation mode: ${this.currentOperationMode}`);
-      }
-    }
+    return plan;
   }
 }

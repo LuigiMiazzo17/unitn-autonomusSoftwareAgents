@@ -2,8 +2,9 @@ import config from "config";
 import fs from "fs";
 import path from "path";
 import { Queue } from "queue-typed";
-import { BeliefSet, TileType } from "src/beliefs";
-import { Intent } from "src/intents";
+import { BeliefSet } from "src/beliefs";
+import { TileType } from "src/beliefs/types";
+import { Action } from "src/intents";
 import { debug, error, info } from "src/utils/log";
 import { fileURLToPath } from "url";
 
@@ -84,7 +85,7 @@ export class PddlPlanner {
       .getAgents()
       .filter((a) => a.id !== this.agentId);
 
-    const pos = this.beliefSet.getPos();
+    const pos = this.beliefSet.getAgentPos();
 
     const objects = [];
     const init = [];
@@ -272,7 +273,7 @@ export class PddlPlanner {
       });
   }
 
-  async solvePddlProblem(): Promise<Queue<Intent> | null> {
+  async solvePddlProblem(): Promise<Queue<Action> | null> {
     debug("Solving PDDL problem", this.agentId);
 
     const planSteps = await this.getPddlSolution();
@@ -283,7 +284,7 @@ export class PddlPlanner {
 
     debug("Plan found!, parsing it!", this.agentId);
 
-    const queue = new Queue<Intent>();
+    const queue = new Queue<Action>();
     for (const step of planSteps) {
       let intent = undefined;
 
@@ -304,13 +305,13 @@ export class PddlPlanner {
           .map((v: string) => parseInt(v));
 
         if (toX === fromX + 1 && toY === fromY) {
-          intent = Intent.MOVE_RIGHT;
+          intent = Action.MOVE_RIGHT;
         } else if (toX === fromX - 1 && toY === fromY) {
-          intent = Intent.MOVE_LEFT;
+          intent = Action.MOVE_LEFT;
         } else if (toX === fromX && toY === fromY + 1) {
-          intent = Intent.MOVE_UP;
+          intent = Action.MOVE_UP;
         } else if (toX === fromX && toY === fromY - 1) {
-          intent = Intent.MOVE_DOWN;
+          intent = Action.MOVE_DOWN;
         } else {
           error(
             `Invalid MOVE action in PDDL plan: from ${from} to ${to}`,
@@ -319,9 +320,9 @@ export class PddlPlanner {
           return null;
         }
       } else if (step.startsWith("pickup")) {
-        intent = Intent.PICKUP;
+        intent = Action.PICKUP;
       } else if (step.startsWith("deliver")) {
-        intent = Intent.DELIVER;
+        intent = Action.DELIVER;
       } else {
         error(`Unknown action in PDDL plan: ${step}`, this.agentId);
         return null;
