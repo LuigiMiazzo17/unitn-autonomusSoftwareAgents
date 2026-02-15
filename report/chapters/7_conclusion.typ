@@ -1,8 +1,8 @@
 = Conclusion and Future Work
 
-The project produced a BDI-based autonomous agent system that scales from single-agent to cooperative multi-agent operation without altering its core deliberation loop, validating the modularity of the design. The Dijkstra planner proves more effective in dynamic environments due to negligible local latency; the PDDL planner yields higher plan quality in stable conditions. Multi-agent cooperation delivers meaningful throughput gains, though the absence of duplicate-pickup avoidance leaves performance below what coordinated task allocation could achieve.
+The project produced a BDI-based autonomous agent system that scales from single-agent to cooperative multi-agent operation without altering its core deliberation loop, validating the modularity of the design. The Dijkstra planner proves more effective in dynamic environments due to negligible local latency and yields better results than the PDDL planner due to the very slow request-response times of the custom solver. Multi-agent cooperation delivers meaningful throughput gains, though the absence of duplicate-pickup avoidance leaves performance below what coordinated task allocation could achieve.
 
-Four concrete improvements are identified for future work.
+Three concrete improvements are identified for future work.
 
 == Handoff Parcel Memory Cleanup
 
@@ -15,7 +15,3 @@ Currently each agent deliberates independently, so task allocation is emergent r
 == Intention Revision Based on Peer Intentions
 
 `IntentionMsg` broadcasts are not yet consumed by recipients. Integrating them into `generateIntentions` — suppressing or heavily penalising `go_pickup` options already committed to by a peer — would eliminate most duplicate pickup conflicts. Care is needed around staleness: a peer's broadcast intention may become obsolete if its plan is invalidated. The existing `lastSeen` timestamp infrastructure could be extended to intention records, discarding stale peer commitments after a configurable timeout.
-
-== Intention Revision Instead of Full Regeneration
-
-On every replanning trigger the full option list is regenerated from scratch. If the world has changed only marginally, most candidates remain valid and the selection changes only at the margin. A revision-first strategy would first check whether the current intention is still valid and still optimal; only if it has become unreachable or been superseded by a significantly better option would the agent commit to a new one. This would reduce unnecessary Dijkstra runs, stabilise behaviour under noisy sensing conditions, and align more closely with the classical BDI model of intentions as persistent commitments revised only under principled conditions.

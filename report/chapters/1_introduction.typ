@@ -1,6 +1,6 @@
 = Introduction
 
-Deliveroo.js is a tile-based simulation in which agents navigate a grid, pick up parcels on spawnable tiles, and deliver them to designated delivery tiles for points. Parcels decay in value over time, so agents must balance exploration, collection, and timely delivery. The environment is dynamic: parcels appear and disappear, and multiple agents — cooperative and adversarial — share the map simultaneously.
+Deliveroo.js is a tile-based simulation in which agents navigate a grid, pick up parcels on spawnable tiles, and deliver them to designated delivery tiles for points. Parcels decay in value over time, so agents must balance exploration, collection, and timely delivery. The environment is dynamic: parcels appear and disappear, and multiple agents, cooperative and adversarial, share the map simultaneously.
 
 == Motivation and Approach
 
