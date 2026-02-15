@@ -2,7 +2,7 @@ import { PriorityQueue } from "priority-queue-typescript";
 import { MeAgent } from "src/beliefs/agents";
 import { Position, TileType } from "src/beliefs/types";
 import { Action } from "src/planning/actions";
-import { normalizePos } from "src/planning/utils";
+import { normalizePos } from "src/utils/math";
 import { error } from "src/utils/log";
 
 export function computeDistanceVectors(

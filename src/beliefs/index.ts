@@ -167,6 +167,10 @@ export class BeliefSet extends ReducedBeliefSet {
     return this.mapBelief.getMap();
   }
 
+  mapContains(pos: Position): boolean {
+    return this.mapBelief.contains(pos);
+  }
+
   isWalkable(pos: Position): boolean {
     const tile = this.mapBelief.getTile(pos);
     const tileTypeWalkable =

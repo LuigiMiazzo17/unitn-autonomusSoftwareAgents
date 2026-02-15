@@ -17,7 +17,7 @@ import Message, {
   ParcelsDeletedMsg,
 } from "src/coordination/message";
 import { Intention, getIntention } from "src/intentions";
-import { PddlPlanner, generatePlanToPos, isInsideMap } from "src/planning";
+import { PddlPlanner, generatePlanToPos } from "src/planning";
 import { Action } from "src/planning/actions";
 import { debug, error, info, warn } from "src/utils/log";
 
@@ -299,9 +299,8 @@ export default class Agent {
   async nextFrame(): Promise<void> {
     this.frame++;
 
-    const map = this.beliefs.getMap();
     const pos = this.beliefs.getAgentPos();
-    if (!isInsideMap(map, pos)) {
+    if (!this.beliefs.mapContains(pos)) {
       error(`Position of agent out of bounds: (${pos.x}, ${pos.y})`);
       return;
     }
