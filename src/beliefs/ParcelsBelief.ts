@@ -67,6 +67,15 @@ export default class ParcelsBelief {
     return this.parcelsHandedOff.has(parcelId);
   }
 
+  resetHandedOffParcels(parcelIds: string[]) {
+    for (const parcelId of parcelIds) {
+      if (this.parcelsHandedOff.has(parcelId)) {
+        this.parcelsHandedOff.delete(parcelId);
+        debug(`Reset handed off parcel ${parcelId}`);
+      }
+    }
+  }
+
   removeParcelsById(parcelIds: Set<string>): void {
     for (const parcelId of parcelIds) {
       if (this.knownParcels.has(parcelId)) {

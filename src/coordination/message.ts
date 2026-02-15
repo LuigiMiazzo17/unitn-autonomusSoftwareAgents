@@ -1,6 +1,4 @@
 import { ReducedBeliefSet } from "src/beliefs";
-import { Queue } from "queue-typed";
-import { Action } from "src/planning/actions";
 import { Intention } from "src/intentions";
 
 export default class Message {
@@ -51,7 +49,12 @@ export default class Message {
 }
 
 export interface MessageType {
-  type: "handshake" | "parcelsDeleted" | "agentsDeleted" | "intention";
+  type:
+    | "handshake"
+    | "parcelsDeleted"
+    | "agentsDeleted"
+    | "intention"
+    | "handoff";
   toObject(): object;
 }
 
@@ -127,6 +130,26 @@ export class IntentionMsg implements MessageType {
   }
 }
 
+export class HandoffMsg implements MessageType {
+  readonly type = "handoff";
+  private parcelIds: string[];
+
+  constructor(parcelIds: string[]) {
+    this.parcelIds = parcelIds;
+  }
+
+  getParcelIds(): string[] {
+    return this.parcelIds;
+  }
+
+  toObject(): object {
+    return {
+      type: this.type,
+      parcelIds: this.parcelIds,
+    };
+  }
+}
+
 export class MessageTypeFactory {
   static fromJSON(obj: object): MessageType {
     switch (obj.type) {
@@ -140,7 +163,10 @@ export class MessageTypeFactory {
         return Object.assign(new AgentsDeletedMsg(new Set<string>()), obj);
 
       case "intention":
-        return Object.assign(new IntentionMsg(new Queue<Action>()), obj);
+        return Object.assign(new IntentionMsg({ kind: "noop" }), obj);
+
+      case "handoff":
+        return Object.assign(new HandoffMsg(new Set()), obj);
 
       default:
         throw new Error(`Unknown message type: ${obj.type}`);
