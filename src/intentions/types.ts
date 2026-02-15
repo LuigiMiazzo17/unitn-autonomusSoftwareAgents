@@ -1,4 +1,4 @@
-import { Position } from "src/beliefs";
+import { Position } from "src/beliefs/types";
 
 export type Intention =
   | {

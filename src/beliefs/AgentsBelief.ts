@@ -42,6 +42,16 @@ export default class AgentsBelief {
     return allAgents;
   }
 
+  getMasterAgentId(): string | null {
+    if (this.groupAgents.size === 0) {
+      return null;
+    }
+    const sortedGroupAgents = Array.from(this.groupAgents.values()).sort(
+      (a, b) => a.getId().localeCompare(b.getId()),
+    );
+    return sortedGroupAgents[0].getId();
+  }
+
   updateAgents(agents: AgentFromUpdate[]): Set<string> {
     for (const rawAgent of agents) {
       const agent = ExternalAgent.fromUpdateAgent(rawAgent);

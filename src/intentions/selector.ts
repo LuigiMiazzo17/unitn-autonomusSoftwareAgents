@@ -7,7 +7,7 @@ export default function selectIntention(intentions: Intention[]): Intention {
 
   const pq: PriorityQueue<[Intention, number]> = new PriorityQueue(
     intentions.length,
-    (a: [Intention, number], b: [Intention, number]) => b[1] - a[1],
+    (a: [Intention, number], b: [Intention, number]) => a[1] - b[1],
   );
 
   for (const intention of intentions) {

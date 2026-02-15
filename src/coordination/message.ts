@@ -121,7 +121,7 @@ export class PlanMsg implements MsgType {
     return this.plan;
   }
 
-  toObject(): any {
+  toObject(): object {
     return {
       type: this.type,
       plan: this.plan.toArray().map((action) => actionToString(action)),
@@ -189,7 +189,7 @@ export class MessageTypeFactory {
           try {
             const action = stringToAction(actionStr);
             planQueue.push(action);
-          } catch (e) {
+          } catch {
             throw new Error(
               `Invalid plan message: unknown action "${actionStr}"`,
             );

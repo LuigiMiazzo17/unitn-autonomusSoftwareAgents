@@ -9,13 +9,13 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
   const intentions: Intention[] = [];
   const distanceVector = computeDistanceVectors(
     beliefs.getMap(),
-    beliefs.getAllAgentsArray(),
-    beliefs.getPos(),
+    beliefs.getAllAgents(),
+    beliefs.getAgentPos(),
   )[0];
 
   const closestDeliveryTiles = getSortedClosestDeliveryTiles(
     beliefs,
-    beliefs.getPos(),
+    beliefs.getAgentPos(),
     distanceVector,
   );
 
@@ -33,11 +33,11 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
 
   const availableParcels = [...beliefs.getParcels()]
     .filter(
-      ([_, p]) =>
+      ([, p]) =>
         p.getCarriedBy() === null &&
         distanceVector[p.getPos().y][p.getPos().x] !== Infinity,
     )
-    .map(([_, p]) => [p, distanceVector[p.getPos().y][p.getPos().x]] as const);
+    .map(([, p]) => [p, distanceVector[p.getPos().y][p.getPos().x]] as const);
   for (const [parcel, distance] of availableParcels) {
     intentions.push({
       kind: "go_pickup",

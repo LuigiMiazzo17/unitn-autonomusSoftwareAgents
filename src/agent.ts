@@ -18,12 +18,7 @@ import Message, {
 } from "src/coordination/message";
 import { Intention, getIntention } from "src/intentions";
 import { Action } from "src/intents";
-import {
-  PddlPlanner,
-  generateHuntingPlan,
-  generateSmartPlan,
-  isInsideMap,
-} from "src/planning";
+import { PddlPlanner, generateHuntingPlan, isInsideMap } from "src/planning";
 import { debug, error, info, warn } from "src/utils/log";
 
 export type AgentOptions = {
