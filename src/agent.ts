@@ -208,7 +208,7 @@ export default class Agent {
     if (this.moveFailCount >= config.maxMoveFailCount) {
       agent.x = Math.floor(agent.x);
       agent.y = Math.floor(agent.y);
-      this.beliefs.updatePos({
+      this.beliefs.updateAgentPos({
         x: Math.floor(agent.x),
         y: Math.floor(agent.y),
       });
@@ -226,8 +226,8 @@ export default class Agent {
     );
 
     if (
-      this.beliefs.getPos().x !== Math.floor(agent.x) ||
-      this.beliefs.getPos().y !== Math.floor(agent.y)
+      this.beliefs.getAgentPos().x !== Math.floor(agent.x) ||
+      this.beliefs.getAgentPos().y !== Math.floor(agent.y)
     ) {
       this.moveFailCount += 1;
     }
@@ -245,7 +245,7 @@ export default class Agent {
     this.apiConnection.connect();
 
     info(
-      `Agent started at position (${this.beliefs.getPos().x}, ${this.beliefs.getPos().y})`,
+      `Agent started at position (${this.beliefs.getAgentPos().x}, ${this.beliefs.getAgentPos().y})`,
       this.id,
     );
 
@@ -303,7 +303,7 @@ export default class Agent {
       debug(`Frame advanced to ${this.frame}`, this.id);
     }
     const map = this.beliefs.getMap();
-    const pos = this.beliefs.getPos();
+    const pos = this.beliefs.getAgentPos();
     if (!isInsideMap(map, pos)) {
       error(`Position of agent out of bounds: (${pos.x}, ${pos.y})`);
       return;
@@ -353,7 +353,7 @@ export default class Agent {
   async executeAction(action: Action): Promise<boolean> {
     debug(`Executing action: ${Action[action]}`, this.id);
 
-    const pos = this.beliefs.getPos();
+    const pos = this.beliefs.getAgentPos();
 
     switch (action) {
       case Action.MOVE_UP:
@@ -395,7 +395,7 @@ export default class Agent {
       this.moveFailCount += 1;
       return false;
     }
-    this.beliefs.updatePos(expected);
+    this.beliefs.updateAgentPos(expected);
     return true;
   }
 

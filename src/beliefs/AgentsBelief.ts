@@ -12,19 +12,19 @@ export default class AgentsBelief {
     this.me = me;
   }
 
-  static fromJSON(o: Object): AgentsBelief {
+  static fromJSON(o: object): AgentsBelief {
     const me = ExternalAgent.fromJSON(o["me"]);
     const belief = new AgentsBelief(me);
     belief.foreignAgents = new Map<string, ExternalAgent>(
       Object.entries(o["foreignAgents"]).map(([id, agent]) => [
         id,
-        ExternalAgent.fromJSON(agent as Object),
+        ExternalAgent.fromJSON(agent as object),
       ]),
     );
     belief.groupAgents = new Map<string, ExternalAgent>(
       Object.entries(o["groupAgents"]).map(([id, agent]) => [
         id,
-        ExternalAgent.fromJSON(agent as Object),
+        ExternalAgent.fromJSON(agent as object),
       ]),
     );
     return belief;

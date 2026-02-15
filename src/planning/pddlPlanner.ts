@@ -85,7 +85,7 @@ export class PddlPlanner {
       .getAgents()
       .filter((a) => a.id !== this.agentId);
 
-    const pos = this.beliefSet.getPos();
+    const pos = this.beliefSet.getAgentPos();
 
     const objects = [];
     const init = [];

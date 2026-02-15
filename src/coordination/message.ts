@@ -26,7 +26,7 @@ export default class Message {
     return this.content;
   }
 
-  static fromObject(obj: any): Message {
+  static fromObject(obj: object): Message {
     if (typeof obj.agentType !== "string") {
       throw new Error("Invalid message: agentType should be a string");
     }
@@ -41,7 +41,7 @@ export default class Message {
     );
   }
 
-  toObject(): any {
+  toObject(): object {
     return {
       content: this.content.toObject(),
       agentType: this.agentType,
@@ -52,7 +52,7 @@ export default class Message {
 
 export interface MsgType {
   type: "handshake" | "parcelsDeleted" | "agentsDeleted";
-  toObject(): any;
+  toObject(): object;
 }
 
 export class HandshakeMsg implements MsgType {
@@ -60,7 +60,7 @@ export class HandshakeMsg implements MsgType {
 
   constructor() {}
 
-  toObject(): any {
+  toObject(): object {
     return {
       type: this.type,
     };
@@ -79,7 +79,7 @@ export class ParcelsDeletedMsg implements MsgType {
     return new Set(this.parcelIds);
   }
 
-  toObject(): any {
+  toObject(): object {
     return {
       type: this.type,
       parcelIds: this.parcelIds,
@@ -99,7 +99,7 @@ export class AgentsDeletedMsg implements MsgType {
     return new Set(this.agentIds);
   }
 
-  toObject(): any {
+  toObject(): object {
     return {
       type: this.type,
       agentIds: this.agentIds,
@@ -108,7 +108,7 @@ export class AgentsDeletedMsg implements MsgType {
 }
 
 export class MessageTypeFactory {
-  static fromObject(obj: any): MsgType {
+  static fromObject(obj: object): MsgType {
     if (typeof obj.type !== "string") {
       throw new Error("Invalid message type: type should be a string");
     }
@@ -117,7 +117,7 @@ export class MessageTypeFactory {
       case "handshake":
         return new HandshakeMsg();
 
-      case "parcelsDeleted":
+      case "parcelsDeleted": {
         if (!Array.isArray(obj.parcelIds)) {
           throw new Error(
             "Invalid parcelsDeleted message: parcelIds should be an array",
@@ -133,8 +133,8 @@ export class MessageTypeFactory {
           set.add(id);
         }
         return new ParcelsDeletedMsg(set);
-
-      case "agentsDeleted":
+      }
+      case "agentsDeleted": {
         if (!Array.isArray(obj.agentIds)) {
           throw new Error(
             "Invalid agentsDeleted message: agentIds should be an array",
@@ -150,7 +150,7 @@ export class MessageTypeFactory {
           agentSet.add(id);
         }
         return new AgentsDeletedMsg(agentSet);
-
+      }
       default:
         throw new Error(`Unknown message type: ${obj.type}`);
     }

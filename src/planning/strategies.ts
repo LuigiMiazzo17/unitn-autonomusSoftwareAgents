@@ -16,11 +16,10 @@ export function getSortedClosestDeliveryTiles(
   pos: Position,
 ): Position[] {
   const map = beliefs.getMap();
-  const logId = beliefs.getId();
 
   const [distances] = computeDistanceVectors(map, beliefs.getAllAgents(), pos);
   if (!distances || distances.length === 0 || distances[0].length === 0) {
-    error("Distances not computed, cannot sort delivery tiles", logId);
+    error("Distances not computed, cannot sort delivery tiles");
     return [];
   }
 
@@ -45,23 +44,22 @@ export function getSortedClosestDeliveryTiles(
 
 export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   const map = beliefs.getMap();
-  const pos = beliefs.getPos();
-  const logId = beliefs.getId();
+  const pos = beliefs.getAgentPos();
   const parcels = beliefs.getParcels();
   const carryingParcels = beliefs.getCarryingParcels();
   const deliveryTiles = beliefs.getDeliveryTiles();
   const agents = beliefs.getAllAgents();
 
   const parcelsToPickup = [...parcels.entries()]
-    .filter(([_, p]) => !p.getCarriedBy())
-    .map(([_, p]) => p);
+    .filter(([, p]) => !p.getCarriedBy())
+    .map(([, p]) => p);
 
   if (parcelsToPickup.length === 0 && carryingParcels.size === 0) {
     return null;
   }
 
   if (deliveryTiles.length === 0) {
-    error("No delivery tiles found on the map", logId);
+    error("No delivery tiles found on the map");
     return null;
   }
 
@@ -74,7 +72,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   if (carryingParcels.size > 0) {
     const [distances, previous] = computeDistanceVectors(map, agents, pos);
     if (!distances || distances.length === 0 || distances[0].length === 0) {
-      error("Distances not computed, cannot compare delivery vs pickup", logId);
+      error("Distances not computed, cannot compare delivery vs pickup");
       return null;
     }
 
@@ -146,8 +144,8 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   let bestCost = Infinity;
   let arrangementsTried = 0;
 
-  debug(`Parcels known: ${parcelsToPickup.length}`, logId);
-  debug(`Delivery tiles known: ${deliveryTiles.length}`, logId);
+  debug(`Parcels known: ${parcelsToPickup.length}`);
+  debug(`Delivery tiles known: ${deliveryTiles.length}`);
 
   while (queue.length > 0) {
     const current = queue.shift();
@@ -168,7 +166,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       current.pos,
     );
     if (!distances || distances.length === 0 || distances[0].length === 0) {
-      error("Distances not computed, skipping step", logId);
+      error("Distances not computed, skipping step");
       continue;
     }
 
@@ -215,7 +213,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
       } else {
         error(
           `No path found to parcel ${parcel.getId()} at (${parcel.getPos().x}, ${parcel.getPos().y})`,
-          logId,
         );
       }
     }
@@ -247,7 +244,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
         } else {
           error(
             `No path found to delivery tile at (${closestDeliveryTile.x}, ${closestDeliveryTile.y})`,
-            logId,
           );
         }
       }
@@ -255,7 +251,6 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   }
   info(
     `Tried ${arrangementsTried} arrangements to find the best plan with distance ${bestCost}`,
-    logId,
   );
 
   if (bestPlan) {
@@ -266,7 +261,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
     return actionQueue;
   }
 
-  error("No plan found with custom resolver", logId);
+  error("No plan found with custom resolver");
   return null;
 }
 
@@ -275,7 +270,7 @@ export function generateHuntingPlan(
   targetPos: Position,
 ): Queue<Action> {
   const map = beliefs.getMap();
-  const pos = beliefs.getPos();
+  const pos = beliefs.getAgentPos();
   const agents = beliefs.getAllAgents();
   const queue = new Queue<Action>();
 

@@ -23,7 +23,7 @@ export default class ExternalAgent {
     );
   }
 
-  static fromJSON(o: Object): ExternalAgent {
+  static fromJSON(o: object): ExternalAgent {
     const ea = Object.assign(new ExternalAgent("", { x: 0, y: 0 }), o);
     ea.lastSeen = new Date(o["lastSeen"]);
     return ea;
