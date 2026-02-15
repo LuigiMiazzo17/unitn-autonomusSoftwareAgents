@@ -1,4 +1,4 @@
-import Message, { HandshakeMsg, MsgType } from "src/coordination/message";
+import Message, { HandshakeMsg, MessageType } from "src/coordination/message";
 import Agent from "src/agent";
 import { warn } from "src/utils/log";
 
@@ -22,13 +22,13 @@ export default class ConnectionManager {
     }
   }
 
-  sendBroadcastMsg(type: MsgType): void {
+  sendBroadcastMsg(type: MessageType): void {
     const msg = new Message(type, this.agentRef.getBeliefSet());
 
     this.agentRef.getApi().emitShout(msg.toObject());
   }
 
-  sendUnicastMsg(agentId: string, type: MsgType): void {
+  sendUnicastMsg(agentId: string, type: MessageType): void {
     const msg = new Message(type, this.agentRef.getBeliefSet());
     this.agentRef.getApi().emitSay(agentId, msg.toObject());
   }

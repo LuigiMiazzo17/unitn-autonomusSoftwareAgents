@@ -36,4 +36,5 @@ export default {
   recalculatePlanOnParcelUpdate: process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE
     ? process.env.RECALCULATE_PLAN_ON_PARCEL_UPDATE === "true"
     : true,
+  modeOfOperation: process.env.MODE_OF_OPERATION || "decentralized",
 };

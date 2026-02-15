@@ -13,7 +13,7 @@ import { Position } from "src/beliefs/types";
 import ConnectionManager from "src/coordination/connectionManager";
 import Message, {
   AgentsDeletedMsg,
-  HandshakeMsg,
+  IntentionMsg,
   ParcelsDeletedMsg,
 } from "src/coordination/message";
 import { Intention, getIntention } from "src/intentions";
@@ -101,7 +101,7 @@ export default class Agent {
   ) => {
     let msg = any_msg as Message; // HACK: try clause in JS make type inference fail
     try {
-      msg = Message.fromObject(any_msg);
+      msg = Message.fromJSON(any_msg);
     } catch (e) {
       console.error(e);
       error(
@@ -116,12 +116,7 @@ export default class Agent {
 
     const msgContent = msg.getContent();
 
-    if (msgContent instanceof HandshakeMsg) {
-      debug(
-        `Handshake received from agent ${senderId}, adding to known agents`,
-        this.id,
-      );
-    } else if (msgContent instanceof ParcelsDeletedMsg) {
+    if (msgContent instanceof ParcelsDeletedMsg) {
       debug(
         `ParcelsDeletedMsg received from agent ${senderId}, removing parcels ${msgContent.getParcelIds()}`,
         this.id,
@@ -133,6 +128,12 @@ export default class Agent {
         this.id,
       );
       this.beliefs.removeForeignAgentsById(msgContent.getAgentIds());
+    } else if (msgContent instanceof IntentionMsg) {
+      debug(
+        `IntentionMsg received from agent ${senderId}, intention: ${msgContent.getIntention().kind}`,
+        this.id,
+      );
+      // TODO: Remove the received intention from our intention list
     }
   };
 
@@ -296,9 +297,8 @@ export default class Agent {
   }
 
   async nextFrame(): Promise<void> {
-    if (this.frame % 100 === 0) {
-      debug(`Frame advanced to ${this.frame}`, this.id);
-    }
+    this.frame++;
+
     const map = this.beliefs.getMap();
     const pos = this.beliefs.getAgentPos();
     if (!isInsideMap(map, pos)) {
@@ -306,16 +306,10 @@ export default class Agent {
       return;
     }
 
-    // 0. Process if is multiagent mode TODO:
-    const isMultipleAgentsMode = this.beliefs.getGroupAgents().size !== 0;
-    const isMasterAgent = this.beliefs.getMasterAgentId() === this.id;
-
     // 1. Check if beliefs changed → invalidate current plan
     if (this.updateBeliefsChecksum()) {
       info(`Beliefs changed, clearing plan`, this.id);
       this.plan = new Queue<Action>();
-
-      // TODO: Invalidate plan of slaves
     }
 
     // 2. Dequeue next action from current plan
@@ -323,28 +317,12 @@ export default class Agent {
 
     // 3. If plan is empty → select intention → generate new plan
     if (nextAction === undefined) {
-      // Single agent mode
-      if (!isMultipleAgentsMode) {
-        info(
-          `Plan is empty, selecting new intention and generating plan`,
-          this.id,
-        );
-        const intention = getIntention(this.beliefs);
-        this.plan = await this.generatePlan(intention);
-        debug(
-          `Generated plan for intention ${intention.kind}: ${this.plan.toArray().map((a) => Action[a])}`,
-          this.id,
-        );
-      }
-      // If is master generate a planm
-      else if (isMasterAgent) {
-        info(
-          `Master agent: plan is empty, selecting new intention and generating plan`,
-          this.id,
-        );
-        // this.plan = await this.generateMultiagentPlan();
-
-        // TODO: send plan to slaves
+      if (config.modeOfOperation === "centralized") {
+        await this.centralizedPlanning();
+      } else if (config.modeOfOperation === "decentralized") {
+        await this.decentralizedPlanning();
+      } else {
+        error(`Unknown mode of operation: ${config.modeOfOperation}`, this.id);
       }
       return;
     }
@@ -359,8 +337,23 @@ export default class Agent {
     } else {
       debug(`Action succeeded`, this.id);
     }
+  }
 
-    this.frame++;
+  private async centralizedPlanning(): Promise<void> {
+    // TODO: Implement centralized mode of operation
+    throw new Error("Centralized mode of operation not implemented yet");
+  }
+
+  private async decentralizedPlanning(): Promise<void> {
+    info(`Plan is empty, selecting new intention and generating plan`, this.id);
+    const intention = getIntention(this.beliefs);
+
+    this.connectionManager.sendBroadcastMsg(new IntentionMsg(intention));
+    this.plan = await this.generatePlan(intention);
+    debug(
+      `Generated plan for intention ${intention.kind}: ${this.plan.toArray().map((a) => Action[a])}`,
+      this.id,
+    );
   }
 
   async executeAction(action: Action): Promise<boolean> {

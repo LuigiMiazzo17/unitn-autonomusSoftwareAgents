@@ -1,13 +1,14 @@
 import { ReducedBeliefSet } from "src/beliefs";
 import { Queue } from "queue-typed";
-import { Action, actionToString } from "src/intents";
+import { Action } from "src/intents";
+import { Intention } from "src/intentions";
 
 export default class Message {
-  private content: MsgType;
+  private content: MessageType;
   private agentType: "svejaMacachi";
   private beliefSet: ReducedBeliefSet;
 
-  constructor(type: MsgType, beliefSet: ReducedBeliefSet) {
+  constructor(type: MessageType, beliefSet: ReducedBeliefSet) {
     this.content = type;
     this.agentType = "svejaMacachi";
     this.beliefSet = beliefSet;
@@ -28,17 +29,14 @@ export default class Message {
     return this.content;
   }
 
-  static fromObject(obj: object): Message {
-    if (typeof obj.agentType !== "string") {
-      throw new Error("Invalid message: agentType should be a string");
-    }
+  static fromJSON(obj: object): Message {
     if (obj.agentType !== "svejaMacachi") {
       throw new Error(
         `Invalid message: agentType should be "svejaMacachi", got "${obj.agentType}"`,
       );
     }
     return new Message(
-      MessageTypeFactory.fromObject(obj.content),
+      MessageTypeFactory.fromJSON(obj.content),
       ReducedBeliefSet.fromJSON(obj.beliefSet),
     );
   }
@@ -52,12 +50,12 @@ export default class Message {
   }
 }
 
-export interface MsgType {
-  type: "handshake" | "parcelsDeleted" | "agentsDeleted" | "plan";
+export interface MessageType {
+  type: "handshake" | "parcelsDeleted" | "agentsDeleted" | "intention";
   toObject(): object;
 }
 
-export class HandshakeMsg implements MsgType {
+export class HandshakeMsg implements MessageType {
   readonly type = "handshake";
 
   constructor() {}
@@ -69,7 +67,7 @@ export class HandshakeMsg implements MsgType {
   }
 }
 
-export class ParcelsDeletedMsg implements MsgType {
+export class ParcelsDeletedMsg implements MessageType {
   readonly type = "parcelsDeleted";
   private parcelIds: string[];
 
@@ -89,7 +87,7 @@ export class ParcelsDeletedMsg implements MsgType {
   }
 }
 
-export class AgentsDeletedMsg implements MsgType {
+export class AgentsDeletedMsg implements MessageType {
   readonly type = "agentsDeleted";
   private agentIds: string[];
 
@@ -109,94 +107,41 @@ export class AgentsDeletedMsg implements MsgType {
   }
 }
 
-export class PlanMsg implements MsgType {
-  readonly type = "plan";
-  private plan: Queue<Action>;
+export class IntentionMsg implements MessageType {
+  readonly type = "intention";
+  private intention: Intention;
 
-  constructor(plan: Queue<Action>) {
-    this.plan = plan;
+  constructor(intention: Intention) {
+    this.intention = intention;
   }
 
-  getPlan(): Queue<Action> {
-    return this.plan;
+  getIntention(): Intention {
+    return this.intention;
   }
 
   toObject(): object {
     return {
       type: this.type,
-      plan: this.plan.toArray().map((action) => actionToString(action)),
+      intention: this.intention,
     };
   }
 }
 
 export class MessageTypeFactory {
-  static fromObject(obj: object): MsgType {
-    if (typeof obj.type !== "string") {
-      throw new Error("Invalid message type: type should be a string");
-    }
-
+  static fromJSON(obj: object): MessageType {
     switch (obj.type) {
       case "handshake":
         return new HandshakeMsg();
 
-      case "parcelsDeleted": {
-        if (!Array.isArray(obj.parcelIds)) {
-          throw new Error(
-            "Invalid parcelsDeleted message: parcelIds should be an array",
-          );
-        }
-        const set = new Set<string>();
-        for (const id of obj.parcelIds) {
-          if (typeof id !== "string") {
-            throw new Error(
-              "Invalid parcelsDeleted message: each parcelId should be a string",
-            );
-          }
-          set.add(id);
-        }
-        return new ParcelsDeletedMsg(set);
-      }
+      case "parcelsDeleted":
+        return Object.assign(new ParcelsDeletedMsg(new Set<string>()), obj);
 
-      case "agentsDeleted": {
-        if (!Array.isArray(obj.agentIds)) {
-          throw new Error(
-            "Invalid agentsDeleted message: agentIds should be an array",
-          );
-        }
-        const agentSet = new Set<string>();
-        for (const id of obj.agentIds) {
-          if (typeof id !== "string") {
-            throw new Error(
-              "Invalid agentsDeleted message: each agentId should be a string",
-            );
-          }
-          agentSet.add(id);
-        }
-        return new AgentsDeletedMsg(agentSet);
-      }
+      case "agentsDeleted":
+        return Object.assign(new AgentsDeletedMsg(new Set<string>()), obj);
 
-      case "plan": {
-        if (!Array.isArray(obj.plan)) {
-          throw new Error("Invalid plan message: plan should be an array");
-        }
-        const planQueue = new Queue<Action>();
-        for (const actionStr of obj.plan) {
-          if (typeof actionStr !== "string") {
-            throw new Error(
-              "Invalid plan message: each action should be a string",
-            );
-          }
-          try {
-            const action = stringToAction(actionStr);
-            planQueue.push(action);
-          } catch {
-            throw new Error(
-              `Invalid plan message: unknown action "${actionStr}"`,
-            );
-          }
-        }
-        return new PlanMsg(planQueue);
-      }
+      case "intention":
+        return Object.assign(new IntentionMsg(new Queue<Action>()), obj);
+
       default:
         throw new Error(`Unknown message type: ${obj.type}`);
     }

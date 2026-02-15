@@ -1,6 +1,7 @@
 import { Intention } from "./types";
 import { PriorityQueue } from "priority-queue-typescript";
 import config from "config";
+import { splitmix32 } from "src/utils/math";
 
 export default function selectIntention(intentions: Intention[]): Intention {
   // Intention are already preconditioned, so we can just select the first based on some euritics
@@ -27,9 +28,14 @@ function calculatePriority(intention: Intention): number {
       return intention.distance;
     case "deliver_parcels":
       return intention.distance * config.deliveryOverPickupRatio;
-    case "explore_spawn":
-      // Random arbitrary priority for exploring spawn, adjusted by intention.tile.checkedCount to prefer less checked tiles
-      // This is a very basic heuristic and can be improved by considering distance to the spawn tile, spawn tiles clusters, etc.
-      return 100 + Math.random() * 10 + intention.tile.checkedCount;
+    case "explore_spawn": {
+      // We want to explore spawn points in a deterministic but random order, so we use a seeded PRNG based on the tile position
+      // PERF: This could be precomputed and stored in the tile data
+      const prng = splitmix32(
+        intention.tile.pos.x * 1000 + intention.tile.pos.y,
+      );
+
+      return 100 + prng() * 10 + intention.tile.checkedCount;
+    }
   }
 }
