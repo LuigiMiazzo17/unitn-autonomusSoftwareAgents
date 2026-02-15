@@ -5,23 +5,36 @@ import {
 } from "@unitn-asa/deliveroo-js-client";
 import config from "config";
 import crypto from "crypto";
-import { debug, error, info, warn } from "src/utils/log";
+import { debug, error, warn } from "src/utils/log";
 import { Position, SpawnableTiles, TileType } from "./beliefs/types";
 import Parcel from "./beliefs/Parcel";
 import ExternalAgent from "./beliefs/ExternalAgent";
 import MapBelief from "./beliefs/MapBelief";
 import { normalizePos } from "./beliefs/utils";
+import AgentsBelief from "./beliefs/AgentsBelief";
 
 export class ReducedBeliefSet {
   protected id: string;
   protected pos: Position;
   protected knownParcels: Map<string, Parcel> = new Map<string, Parcel>();
-  protected foreignAgents: Map<string, ExternalAgent> = new Map();
-  protected groupAgents: Map<string, ExternalAgent> = new Map();
+  protected agentsBelief: AgentsBelief;
 
   constructor(id: string, pos: Position) {
     this.id = id;
     this.pos = normalizePos(pos);
+    this.agentsBelief = new AgentsBelief(new ExternalAgent(id, pos));
+  }
+
+  static fromJSON(o: Object): ReducedBeliefSet {
+    const rbs = Object.assign(new ReducedBeliefSet("", { x: 0, y: 0 }), o);
+    rbs.agentsBelief = AgentsBelief.fromJSON(o["agentsBelief"]);
+    rbs.knownParcels = new Map<string, Parcel>(
+      Object.entries(o["knownParcels"]).map(([id, parcel]) => [
+        id,
+        Object.assign(new Parcel(id, { x: 0, y: 0 }, 0), parcel as Object),
+      ]),
+    );
+    return rbs;
   }
 
   getId(): string {
@@ -57,7 +70,7 @@ export class ReducedBeliefSet {
       })
       .sort()
       .join("|");
-    const agentsStr = this.getAllAgentsArray()
+    const agentsStr = this.getAllAgents()
       .map(
         (a) =>
           `${a.getId()}-${Math.floor(a.getPos().x)}-${Math.floor(a.getPos().y)}`,
@@ -138,132 +151,24 @@ export class ReducedBeliefSet {
     return false;
   }
 
-  getKnwonAgentsIds(): Set<string> {
-    return new Set<string>([
-      ...this.foreignAgents.keys(),
-      ...this.groupAgents.keys(),
-    ]);
+  getAllAgents(): ExternalAgent[] {
+    return this.agentsBelief.getAllAgents();
   }
 
-  getAllAgentsArray(): ExternalAgent[] {
-    const allAgents: ExternalAgent[] = [
-      ...this.foreignAgents.values(),
-      ...this.groupAgents.values(),
-    ];
-    return allAgents;
-  }
-
-  updateAgentsFromSensing(
-    agents: DeliverooAgentFromUpdate[],
-  ): [boolean, Set<string>] {
-    let somethingHasChanged = false;
-    // TODO: Revise somethingHasChanged
-
-    for (const agent of agents) {
-      const optionalGroupAgent = this.groupAgents.get(agent.id);
-      if (optionalGroupAgent) {
-        debug(
-          `Updating group agent ${agent.id} position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
-          this.id,
-        );
-        optionalGroupAgent.updatePos({
-          x: Math.floor(agent.x),
-          y: Math.floor(agent.y),
-        });
-        optionalGroupAgent.setSeen();
-        continue;
-      }
-
-      const optionalForeignAgent = this.foreignAgents.get(agent.id);
-      if (optionalForeignAgent) {
-        debug(
-          `Updating foreign agent ${agent.id} position to (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
-          this.id,
-        );
-        optionalForeignAgent.updatePos({
-          x: Math.floor(agent.x),
-          y: Math.floor(agent.y),
-        });
-      } else {
-        info(
-          `Discovered new foreign agent ${agent.id} at position (${Math.floor(agent.x)}, ${Math.floor(agent.y)})`,
-          this.id,
-        );
-        this.foreignAgents.set(
-          agent.id,
-          new ExternalAgent(agent.id, {
-            x: Math.floor(agent.x),
-            y: Math.floor(agent.y),
-          }),
-        );
-      }
-    }
-
-    // Get all known agentIds that are within agent sensing range,
-    // if not present in the update, remove them because they are expired.
-
-    const deletedAgentIds = new Set<string>();
-    for (const [agentId, agent] of this.foreignAgents.entries()) {
-      const distance =
-        Math.abs(agent.getPos().x - this.pos.x) +
-        Math.abs(agent.getPos().y - this.pos.y);
-      if (
-        distance < config.agentSensingDistance &&
-        !agents.some((a) => a.id === agentId)
-      ) {
-        this.foreignAgents.delete(agentId);
-        deletedAgentIds.add(agentId);
-        debug(
-          `Agent ${agentId} is within sensing range but not in the update, removing from foreign agents`,
-          this.id,
-        );
-      }
-    }
-
-    // We don't want to remove group agents, because they are better handled
-    // with the connection manager
-
-    return [somethingHasChanged, deletedAgentIds];
+  updateAgentsFromSensing(agents: DeliverooAgentFromUpdate[]): Set<string> {
+    return this.agentsBelief.updateAgents(agents);
   }
 
   removeAgent(agentId: string): void {
-    if (this.groupAgents.has(agentId)) {
-      debug(`Removing agent ${agentId} from group agents`, this.id);
-      this.groupAgents.delete(agentId);
-    } else if (this.foreignAgents.has(agentId)) {
-      debug(`Removing agent ${agentId} from foreign agents`, this.id);
-      this.foreignAgents.delete(agentId);
-    } else {
-      error(
-        `Cannot remove agent ${agentId} - not found in known agents`,
-        this.id,
-      );
-    }
+    this.agentsBelief.removeAgent(agentId);
   }
 
   removeForeignAgentsById(agentIds: Set<string>): void {
-    for (const agentId of agentIds) {
-      if (this.foreignAgents.has(agentId)) {
-        this.foreignAgents.delete(agentId);
-        debug(`Removed agent ${agentId} from foreign agents`, this.id);
-      }
-    }
-  }
-
-  getForeignAgents(): Map<string, ExternalAgent> {
-    return this.foreignAgents;
-  }
-
-  updateForeignAgents(agents: Map<string, ExternalAgent>): void {
-    this.foreignAgents = agents;
+    this.agentsBelief.removeForeignAgentsById(agentIds);
   }
 
   getGroupAgents(): Map<string, ExternalAgent> {
-    return this.groupAgents;
-  }
-
-  updateGroupAgents(agents: Map<string, ExternalAgent>): void {
-    this.groupAgents = agents;
+    return this.agentsBelief.getGroupAgents();
   }
 
   mergeFromMessage(
@@ -271,128 +176,7 @@ export class ReducedBeliefSet {
     otherAgentBeliefs: ReducedBeliefSet,
     updateSeen: boolean = true,
   ): void {
-    // First thing first, update the agent who sent the message
-    const groupAgent = this.groupAgents.get(otherAgentId);
-    if (groupAgent) {
-      groupAgent.updatePos(otherAgentBeliefs.getPos());
-      if (updateSeen) {
-        groupAgent.setSeen();
-      }
-    } else {
-      this.groupAgents.set(
-        this.id,
-        new ExternalAgent(otherAgentId, otherAgentBeliefs.getPos()),
-      );
-    }
-
-    // If sender is in foreign agents, move it to group agents because we now know that it's in our group
-    if (this.foreignAgents.has(otherAgentId)) {
-      debug(
-        `Agent ${otherAgentId} is now in our group according to message, moving from foreign agents to group agents`,
-        this.id,
-      );
-      this.foreignAgents.delete(otherAgentId);
-      console.log("EVVIVA");
-      this.groupAgents.set(
-        otherAgentId,
-        new ExternalAgent(otherAgentId, otherAgentBeliefs.getPos()),
-      );
-    }
-
-    // Now update all foreign agent knowledge
-    for (const [
-      foreignAgentId,
-      foreignAgent,
-    ] of otherAgentBeliefs.foreignAgents.entries()) {
-      if (foreignAgentId === this.id) {
-        error(
-          `Agent ${otherAgentId} thinks we are a foreign agent, ignoring`,
-          this.id,
-        );
-        continue;
-      }
-
-      // If we don't know about this agent, add it to foreign agents
-      const optionalForeignAgent = this.foreignAgents.get(foreignAgentId);
-      if (!optionalForeignAgent) {
-        info(
-          `Adding new foreign agent ${foreignAgentId} from message of ${otherAgentId}`,
-          this.id,
-        );
-        this.foreignAgents.set(foreignAgentId, foreignAgent);
-        continue;
-      }
-
-      // Skip updates of agents older than the last update we have for the same
-      // agent
-      if (optionalForeignAgent.getLastSeen() > foreignAgent.getLastSeen()) {
-        debug(
-          `Skipping update of agent ${foreignAgentId} from message of ${otherAgentId} because it's older than our last seen`,
-          this.id,
-        );
-        continue;
-      }
-
-      // The other agent thinks that this foreign agent is not in our group,
-      // better if we ignore it because we know better
-      if (this.groupAgents.has(foreignAgentId)) {
-        continue;
-      }
-
-      // Update foreign agent position and last seen
-      debug(
-        `Updating foreign agent ${foreignAgentId} from message of ${otherAgentId}`,
-        this.id,
-      );
-      this.foreignAgents.set(foreignAgentId, foreignAgent);
-    }
-
-    for (const [
-      groupAgentId,
-      groupAgent,
-    ] of otherAgentBeliefs.groupAgents.entries()) {
-      if (groupAgentId === this.id) {
-        debug("Don't process our self in group update", this.id);
-        continue;
-      }
-
-      // If we don't know about this agent, add it to group agents
-      const optionalGroupAgent = this.groupAgents.get(groupAgentId);
-      if (!optionalGroupAgent) {
-        info(
-          `Adding new group agent ${groupAgentId} from message of ${otherAgentId}`,
-          this.id,
-        );
-        this.groupAgents.set(groupAgentId, groupAgent);
-        continue;
-      }
-
-      // Skip updates of agents older than the last update we have for the same agent
-      if (optionalGroupAgent.getLastSeen() > groupAgent.getLastSeen()) {
-        debug(
-          `Skipping update of group agent ${groupAgentId} from message of ${otherAgentId} because it's older than our last seen`,
-          this.id,
-        );
-        continue;
-      }
-
-      // If we thought that this agent was a foreign agent, remove it from foreign agents and add to group agents
-      if (this.foreignAgents.has(groupAgentId)) {
-        debug(
-          `Agent ${groupAgentId} is now in our group according to message of ${otherAgentId}, moving from foreign agents to group agents`,
-          this.id,
-        );
-        this.foreignAgents.delete(groupAgentId);
-        this.groupAgents.set(groupAgentId, groupAgent);
-        continue;
-      }
-
-      debug(
-        `Updating group agent ${groupAgentId} from message of ${otherAgentId}`,
-        this.id,
-      );
-      this.groupAgents.set(groupAgentId, groupAgent);
-    }
+    this.agentsBelief.merge(otherAgentBeliefs.agentsBelief, updateSeen);
 
     for (const [parcelId, parcel] of otherAgentBeliefs.knownParcels.entries()) {
       const optionalParcel = this.knownParcels.get(parcelId);
@@ -431,31 +215,14 @@ export class ReducedBeliefSet {
         y: parcel.getPos().y,
         carriedBy: parcel.getCarriedBy() ?? null,
         reward: parcel.getReward(),
-        lastSeen: parcel.getLastSeen().toISOString(),
-      };
-    }
-    const foreignAgentsObj: any = {};
-    for (const [agentId, agent] of this.foreignAgents.entries()) {
-      foreignAgentsObj[agentId] = {
-        id: agent.getId(),
-        pos: { x: agent.getPos().x, y: agent.getPos().y },
-        lastSeen: agent.getLastSeen().toISOString(),
-      };
-    }
-    const groupAgentsObj: any = {};
-    for (const [agentId, agent] of this.groupAgents.entries()) {
-      groupAgentsObj[agentId] = {
-        id: agent.getId(),
-        pos: { x: agent.getPos().x, y: agent.getPos().y },
-        lastSeen: agent.getLastSeen().toISOString(),
+        lastSeen: parcel.getLastSeen(),
       };
     }
     return {
       id: this.id,
       pos: this.pos,
       knownParcels: knownParcelsObj,
-      foreignAgents: foreignAgentsObj,
-      groupAgents: groupAgentsObj,
+      agentsBelief: this.agentsBelief,
     };
   }
 }
@@ -472,6 +239,7 @@ export class BeliefSet extends ReducedBeliefSet {
     this.mapBelief = new MapBelief(unserialized_map);
     this.pos = normalizePos(pos);
   }
+
   getMap(): TileType[][] {
     return this.mapBelief.getMap();
   }
@@ -479,8 +247,7 @@ export class BeliefSet extends ReducedBeliefSet {
   updateMap(width: number, height: number, tiles: Tile[]): void {
     const map = MapBelief.convertMap({ width, height, tiles });
     this.mapBelief.update(map);
-    this.foreignAgents = new Map<string, ExternalAgent>();
-    this.groupAgents = new Map<string, ExternalAgent>();
+    this.agentsBelief.reset();
     this.knownParcels = new Map<string, Parcel>();
   }
 
@@ -612,169 +379,5 @@ export class BeliefSet extends ReducedBeliefSet {
 
     debug(`Updated parcels: ${this.knownParcels.size}`, this.id);
     return [somethingChanged, deletedParcelIds];
-  }
-}
-
-export class ReducedBeliefSetWithout {
-  static fromObject(obj: any): ReducedBeliefSet {
-    // this is used in message passing, so map, deliveryTiles and spawnableTiles
-    // are not included in the message because each agent has the same thing
-
-    // Field: id: string
-    if (typeof obj.id !== "string") {
-      throw new Error("Invalid belief set: id should be a string");
-    }
-
-    // Field: pos: Position
-    if (typeof obj.pos !== "object") {
-      throw new Error("Invalid belief set: pos should be an object");
-    }
-    if (typeof obj.pos.x !== "number" || typeof obj.pos.y !== "number") {
-      throw new Error("Invalid belief set: pos should have numeric x and y");
-    }
-
-    // Field: knownParcels: Map<string, DeliverooParcelType>
-    if (typeof obj.knownParcels !== "object") {
-      throw new Error("Invalid belief set: parcels should be an object");
-    }
-
-    const knownParcels = new Map<string, Parcel>();
-    for (const [parcelId, parcel] of Object.entries(obj.knownParcels) as [
-      string,
-      any,
-    ]) {
-      if (typeof parcel.id !== "string") {
-        throw new Error("Invalid belief set: parcel id should be a string");
-      }
-      if (typeof parcel.x !== "number" || typeof parcel.y !== "number") {
-        throw new Error(
-          "Invalid belief set: parcel position should have numeric x and y",
-        );
-      }
-      if (parcel.carriedBy !== null && typeof parcel.carriedBy !== "string") {
-        throw new Error(
-          "Invalid belief set: parcel carriedBy should be null or a string",
-        );
-      }
-      if (typeof parcel.reward !== "number") {
-        throw new Error("Invalid belief set: parcel reward should be a number");
-      }
-      if (typeof parcel.lastSeen !== "string") {
-        throw new Error(
-          "Invalid belief set: parcel lastSeen should be a string",
-        );
-      }
-
-      knownParcels.set(
-        parcelId,
-        new Parcel(
-          parcel.id,
-          {
-            x: Math.floor(parcel.x),
-            y: Math.floor(parcel.y),
-          },
-          parcel.reward,
-          parcel.carriedBy ?? undefined,
-          new Date(parcel.lastSeen),
-        ),
-      );
-    }
-
-    // Field: foreignAgents: Map<string, ExternalForeignAgent>
-    if (typeof obj.foreignAgents !== "object") {
-      throw new Error("Invalid belief set: foreignAgents should be an object");
-    }
-
-    const foreignAgents = new Map<string, ExternalAgent>();
-    for (const [agentId, agent] of Object.entries(obj.foreignAgents) as [
-      string,
-      any,
-    ]) {
-      if (typeof agentId !== "string") {
-        throw new Error(
-          "Invalid belief set: foreign agent id should be a string",
-        );
-      }
-      if (typeof agent.pos !== "object") {
-        throw new Error(
-          "Invalid belief set: foreign agent pos should be an object",
-        );
-      }
-      if (typeof agent.pos.x !== "number" || typeof agent.pos.y !== "number") {
-        throw new Error(
-          "Invalid belief set: foreign agent pos should have numeric x and y",
-        );
-      }
-      if (typeof agent.lastSeen !== "string") {
-        throw new Error(
-          "Invalid belief set: foreign agent lastSeen should be a string",
-        );
-      }
-
-      foreignAgents.set(
-        agentId,
-        new ExternalAgent(
-          agentId,
-          {
-            x: Math.floor(agent.pos.x),
-            y: Math.floor(agent.pos.y),
-          },
-          new Date(agent.lastSeen),
-        ),
-      );
-    }
-
-    // Field: groupAgents: Map<string, ExternalGroupAgent>
-    if (typeof obj.groupAgents !== "object") {
-      throw new Error("Invalid belief set: groupAgents should be an object");
-    }
-
-    const groupAgents = new Map<string, ExternalAgent>();
-    for (const [agentId, agent] of Object.entries(obj.groupAgents) as [
-      string,
-      any,
-    ]) {
-      if (typeof agentId !== "string") {
-        throw new Error(
-          "Invalid belief set: group agent id should be a string",
-        );
-      }
-      if (typeof agent.pos !== "object") {
-        throw new Error(
-          "Invalid belief set: group agent pos should be an object",
-        );
-      }
-      if (typeof agent.pos.x !== "number" || typeof agent.pos.y !== "number") {
-        throw new Error(
-          "Invalid belief set: group agent pos should have numeric x and y",
-        );
-      }
-      if (typeof agent.lastSeen !== "string") {
-        throw new Error(
-          "Invalid belief set: group agent lastSeen should be a string",
-        );
-      }
-
-      groupAgents.set(
-        agentId,
-        new ExternalAgent(
-          agentId,
-          {
-            x: Math.floor(agent.pos.x),
-            y: Math.floor(agent.pos.y),
-          },
-          new Date(agent.lastSeen),
-        ),
-      );
-    }
-
-    const beliefSet = new ReducedBeliefSet(obj.id, {
-      x: Math.floor(obj.pos.x),
-      y: Math.floor(obj.pos.y),
-    });
-    beliefSet.updateKnownParcels(knownParcels);
-    beliefSet.updateForeignAgents(foreignAgents);
-    beliefSet.updateGroupAgents(groupAgents);
-    return beliefSet;
   }
 }

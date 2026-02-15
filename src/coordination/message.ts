@@ -1,4 +1,4 @@
-import { ReducedBeliefSet, ReducedBeliefSetWithout } from "src/beliefs";
+import { ReducedBeliefSet } from "src/beliefs";
 
 export default class Message {
   private content: MsgType;
@@ -37,7 +37,7 @@ export default class Message {
     }
     return new Message(
       MessageTypeFactory.fromObject(obj.content),
-      ReducedBeliefSetWithout.fromObject(obj.beliefSet),
+      ReducedBeliefSet.fromJSON(obj.beliefSet),
     );
   }
 

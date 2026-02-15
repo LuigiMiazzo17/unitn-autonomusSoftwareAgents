@@ -18,11 +18,7 @@ export function getSortedClosestDeliveryTiles(
   const map = beliefs.getMap();
   const logId = beliefs.getId();
 
-  const [distances] = computeDistanceVectors(
-    map,
-    beliefs.getAllAgentsArray(),
-    pos,
-  );
+  const [distances] = computeDistanceVectors(map, beliefs.getAllAgents(), pos);
   if (!distances || distances.length === 0 || distances[0].length === 0) {
     error("Distances not computed, cannot sort delivery tiles", logId);
     return [];
@@ -54,7 +50,7 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   const parcels = beliefs.getParcels();
   const carryingParcels = beliefs.getCarryingParcels();
   const deliveryTiles = beliefs.getDeliveryTiles();
-  const agents = beliefs.getAllAgentsArray();
+  const agents = beliefs.getAllAgents();
 
   const parcelsToPickup = [...parcels.entries()]
     .filter(([_, p]) => !p.getCarriedBy())
@@ -280,7 +276,7 @@ export function generateHuntingPlan(
 ): Queue<Action> {
   const map = beliefs.getMap();
   const pos = beliefs.getPos();
-  const agents = beliefs.getAllAgentsArray();
+  const agents = beliefs.getAllAgents();
   const queue = new Queue<Action>();
 
   if (beliefs.isPickupAvailable()) {

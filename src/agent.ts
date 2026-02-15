@@ -174,9 +174,10 @@ export default class Agent {
     agents,
   ) => {
     debug(`Agents sensing event: ${agents.length} agents`, this.id);
-    const [somethingChanged, deletedAgents] =
-      this.beliefs.updateAgentsFromSensing(agents);
+    const deletedAgents = this.beliefs.updateAgentsFromSensing(agents);
 
+    // TODO: use beliefs hash diff to detect this
+    const somethingChanged = true;
     if (somethingChanged && config.recalculatePlanOnParcelUpdate) {
       info(`Parcels changed, dropping plan`, this.id);
       this.plan = new Queue<Action>();
