@@ -1,7 +1,5 @@
 = System Design
 
-// [FIGURE: Module diagram: `beliefs/` → `generateIntentions` → `selectIntention` → planner → `Queue<Action>` → `Agent` frame loop. `ConnectionManager` feeds `BeliefSet` via `merge()` from incoming messages.]
-
 The codebase is structured around a single `Agent` class that drives the BDI loop. Supporting logic is split into four modules under `src/`: `beliefs/` for world state management, `intentions/` for goal generation and selection, `planning/` for path computation and PDDL interaction, and `coordination/` for multi-agent messaging. Each agent runs as a separate node thread; teammates communicate over the Deliveroo.js broadcast channel.
 
 == BDI Architecture Overview

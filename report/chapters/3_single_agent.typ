@@ -17,8 +17,6 @@ At the start of each deliberation phase, `generateIntentions(beliefs)` produces 
 
 `selectIntention` ranks candidates in a min-priority queue; the lowest score wins. Priority formulas are summarised in //@priority-table.
 
-// [TABLE: Intention priorities <priority-table> — columns: intention type, priority formula. go_pickup → distance; deliver_parcels → distance × deliveryOverPickupRatio (default 0.8); handoff → distance × 2; explore_spawn → 100 + PRNG(x,y) + checkedCount; noop → ∞.]
-
 Delivery is preferred over same-distance pickup by a factor of `deliveryOverPickupRatio` (default 0.8): parcels in hand are already decaying, so completing a delivery is worth slightly more than starting a new acquisition at the same travel cost. Exploration is scored above 100, keeping it below any reachable parcel option. The seeded PRNG makes spawnable-tile ordering deterministic and consistent across frames; the `checkedCount` penalty gradually shifts focus to less-visited tiles, encouraging broad map coverage over time. `noop` at infinity is selected only when every other option is unavailable.
 
 == Path Planning with Dijkstra

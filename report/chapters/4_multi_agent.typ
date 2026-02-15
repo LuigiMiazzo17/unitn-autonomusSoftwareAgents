@@ -14,8 +14,6 @@ Five message types are defined. `HandshakeMsg` serves as both a liveness beacon 
 
 == Parcel Handoff
 
-// [FIGURE: Handoff sequence: A picks up parcel → moves adjacent to B → sends HandoffMsg → executes HANDOFF (putdown) → B calls resetHandedOffParcels() → B picks up parcel → B delivers.]
-
 The handoff mechanism enables one agent to transfer carried parcels to a better-positioned teammate. When carrying parcels, the intention generator produces `handoff` candidates targeting the four cardinal tiles adjacent to each known group agent. If the agent navigates to one of these tiles, it broadcasts a `HandoffMsg` carrying the parcel IDs, then executes a `HANDOFF` action implemented as a `putdown` at the current position.
 
 The `HandoffMsg` is necessary because `ParcelsBelief` maintains a `parcelsHandedOff` ignore set: when an agent drops a parcel, it adds its ID to this set to avoid immediately re-picking it up the next time sensors report it. The message clears this flag on the receiver so it can pick up the dropped parcel freely. Handoff priority (distance × 20) keeps it subordinate to direct delivery or a nearby unclaimed parcel, preventing pointless back-and-forth between adjacent agents.
