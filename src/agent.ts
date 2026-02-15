@@ -13,6 +13,7 @@ import { Position } from "src/beliefs/types";
 import ConnectionManager from "src/coordination/ConnectionManager";
 import Message, {
   AgentsDeletedMsg,
+  HandoffMsg,
   IntentionMsg,
   ParcelsDeletedMsg,
 } from "src/coordination/message";
@@ -134,6 +135,12 @@ export default class Agent {
         this.id,
       );
       // TODO: Remove the received intention from our intention list
+    } else if (msgContent instanceof HandoffMsg) {
+      debug(
+        `HandoffMsg received from agent ${senderId}, handoff parcels ${msgContent.getParcelIds()}`,
+        this.id,
+      );
+      this.beliefs.resetHandedOffParcels(msgContent.getParcelIds());
     }
   };
 
@@ -424,8 +431,16 @@ export default class Agent {
 
   async deliver(handoff: boolean = false): Promise<boolean> {
     // NOTE: This must be before the API call because otherwise stuff will be overwritten by the onParcelSensing hook.
-    if (handoff) this.beliefs.handoffParcels();
-    else this.beliefs.deliverParcels();
+    if (handoff) {
+      this.connectionManager.sendBroadcastMsg(
+        new HandoffMsg(
+          Array.from(this.beliefs.getCarriedParcels()).map((p) => p.getId()),
+        ),
+      );
+      this.beliefs.handoffParcels();
+    } else {
+      this.beliefs.deliverParcels();
+    }
 
     const result = await this.apiConnection.emitPutdown();
     if (result.length === 0) {

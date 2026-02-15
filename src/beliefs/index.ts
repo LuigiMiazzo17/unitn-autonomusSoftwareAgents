@@ -110,6 +110,10 @@ export class ReducedBeliefSet {
     return this.parcelsBelief.ignoreParcel(parcelId);
   }
 
+  resetHandedOffParcels(parcelIds: string[]): void {
+    this.parcelsBelief.resetHandedOffParcels(parcelIds);
+  }
+
   removeParcelsById(parcelIds: Set<string>): void {
     this.parcelsBelief.removeParcelsById(parcelIds);
   }
