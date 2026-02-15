@@ -13,8 +13,34 @@ export default class MapBelief {
     height: number;
     tiles: Tile[];
   }) {
-    const map = MapBelief.convertMap(unserialized_map);
+    const map = MapBelief.fromRawMap(unserialized_map);
     this.update(map);
+  }
+
+  static fromRawMap(m: {
+    width: number;
+    height: number;
+    tiles: Tile[];
+  }): TileType[][] {
+    const map = Array.from({ length: m.height }, () =>
+      Array(m.width).fill(TileType.EMPTY),
+    );
+
+    for (const tile of m.tiles) {
+      if (tile.type === 0) {
+        map[tile.y][tile.x] = TileType.WALL;
+      } else if (tile.type === 1) {
+        map[tile.y][tile.x] = TileType.SPAWNABLE;
+      } else if (tile.type === 2) {
+        map[tile.y][tile.x] = TileType.DELIVERY;
+      } else if (tile.type === 3) {
+        map[tile.y][tile.x] = TileType.EMPTY;
+      } else {
+        throw new Error(`Unknown tile type: ${tile.type}`);
+      }
+    }
+
+    return map;
   }
 
   getMap(): TileType[][] {
@@ -27,6 +53,22 @@ export default class MapBelief {
 
   getSpawnableTiles(): SpawnableTiles[] {
     return this.spawnableTiles;
+  }
+
+  getTile(pos: Position): TileType | null {
+    if (!this.contains(pos)) {
+      return null;
+    }
+    return this.map[pos.y][pos.x];
+  }
+
+  markSpawnableTileChecked(pos: Position): void {
+    const spawnableTile = this.spawnableTiles.find(
+      (tile) => tile.pos.x === pos.x && tile.pos.y === pos.y,
+    );
+    if (spawnableTile) {
+      spawnableTile.checkedCount += 1;
+    }
   }
 
   update(map: TileType[][]): void {
@@ -64,31 +106,5 @@ export default class MapBelief {
 
   private isValid(): boolean {
     return this.map.length > 0 && this.map[0].length > 0;
-  }
-
-  static convertMap(m: {
-    width: number;
-    height: number;
-    tiles: Tile[];
-  }): TileType[][] {
-    const map = Array.from({ length: m.height }, () =>
-      Array(m.width).fill(TileType.EMPTY),
-    );
-
-    for (const tile of m.tiles) {
-      if (tile.type === 0) {
-        map[tile.y][tile.x] = TileType.WALL;
-      } else if (tile.type === 1) {
-        map[tile.y][tile.x] = TileType.SPAWNABLE;
-      } else if (tile.type === 2) {
-        map[tile.y][tile.x] = TileType.DELIVERY;
-      } else if (tile.type === 3) {
-        map[tile.y][tile.x] = TileType.EMPTY;
-      } else {
-        throw new Error(`Unknown tile type: ${tile.type}`);
-      }
-    }
-
-    return map;
   }
 }

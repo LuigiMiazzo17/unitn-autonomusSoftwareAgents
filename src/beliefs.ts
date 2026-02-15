@@ -160,7 +160,7 @@ export class BeliefSet extends ReducedBeliefSet {
   }
 
   updateMap(width: number, height: number, tiles: Tile[]): void {
-    const map = MapBelief.convertMap({ width, height, tiles });
+    const map = MapBelief.fromRawMap({ width, height, tiles });
     this.mapBelief.update(map);
     this.agentsBelief.clear();
     this.parcelsBelief.clear();
@@ -178,16 +178,15 @@ export class BeliefSet extends ReducedBeliefSet {
   }
 
   private isOnDeliveryTile(): boolean {
-    if (!this.mapBelief.contains(this.getAgentPos())) {
-      return false;
-    }
-    if (
-      this.mapBelief.getMap()[this.getAgentPos().y][this.getAgentPos().x] ===
-      TileType.DELIVERY
-    ) {
-      return true;
-    }
-    return false;
+    return this.mapBelief.getTile(this.getAgentPos()) === TileType.DELIVERY;
+  }
+
+  isOnSpawnableTile(): boolean {
+    return this.mapBelief.getTile(this.getAgentPos()) === TileType.SPAWNABLE;
+  }
+
+  markCurrentSpawnableTileChecked() {
+    this.mapBelief.markSpawnableTileChecked(this.getAgentPos());
   }
 
   deliverParcel(parcelId: string): void {
