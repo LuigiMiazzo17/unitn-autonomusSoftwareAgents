@@ -50,7 +50,7 @@ export function generatePlanToPos(
 
   if (pos.x === targetPos.x && pos.y === targetPos.y) {
     warn(`Already on target tile at (${targetPos.x}, ${targetPos.y})`);
-    return new Queue<Action>();
+    return new Queue<Action>([Action.NOOP]);
   }
 
   const pathToTarget = dijkstra(map, agents, pos, targetPos);

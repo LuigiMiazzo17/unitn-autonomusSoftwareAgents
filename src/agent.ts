@@ -40,7 +40,7 @@ export default class Agent {
   private stopped: boolean = false;
   private beliefsChecksum: string = "";
 
-  static readonly FRAME_ADVANCE_INTERVAL = 100;
+  static readonly NOOP_ZZZ_MS = 100;
 
   constructor(
     apiConnection: DeliverooApi,
@@ -381,6 +381,7 @@ export default class Agent {
       case Action.HANDOFF:
         return await this.deliver(true);
       case Action.NOOP:
+        await new Promise((resolve) => setTimeout(resolve, Agent.NOOP_ZZZ_MS));
         return true;
       default:
         error(`Unknown action: ${action}`, this.id);
