@@ -24,13 +24,14 @@ export class ReducedBeliefSet {
 
   static fromJSON(o: Record<string, unknown>): ReducedBeliefSet {
     const rbs = Object.assign(new ReducedBeliefSet("", { x: 0, y: 0 }), o);
-    rbs.agentsBelief = AgentsBelief.fromJSON((o["agentsBelief"] ?? {}) as object);
+    rbs.agentsBelief = AgentsBelief.fromJSON(
+      (o["agentsBelief"] ?? {}) as object,
+    );
     rbs.parcelsBelief = ParcelsBelief.fromJSON(
       (o["parcelsBelief"] ?? {}) as object,
     );
     rbs.spawnableTilesLastSeen =
-      (o["spawnableTilesLastSeen"] as Record<string, number> | undefined) ??
-      {};
+      (o["spawnableTilesLastSeen"] as Record<string, number> | undefined) ?? {};
     return rbs;
   }
 
@@ -151,7 +152,9 @@ export class ReducedBeliefSet {
   merge(otherAgentBeliefs: ReducedBeliefSet, updateSeen: boolean = true): void {
     this.agentsBelief.merge(otherAgentBeliefs.agentsBelief, updateSeen);
     this.parcelsBelief.merge(otherAgentBeliefs.parcelsBelief);
-    this.mergeSpawnableTilesLastSeen(otherAgentBeliefs.getSpawnableTilesLastSeen());
+    this.mergeSpawnableTilesLastSeen(
+      otherAgentBeliefs.getSpawnableTilesLastSeen(),
+    );
   }
 
   toObject(): object {
