@@ -5,19 +5,22 @@ import { BeliefSet } from "src/beliefs";
 import { TileType, Position } from "src/beliefs/types";
 import { debug, info, error } from "src/utils/log";
 import {
+  computeDistanceVectors,
   getPathFromDistances,
   dijkstra,
-  computeDistanceVectors,
 } from "./algorithms";
 import Parcel from "src/beliefs/Parcel";
 
 export function getSortedClosestDeliveryTiles(
   beliefs: BeliefSet,
   pos: Position,
+  precomputedDistances: number[][] | null = null,
 ): Position[] {
   const map = beliefs.getMap();
 
-  const [distances] = computeDistanceVectors(map, beliefs.getAllAgents(), pos);
+  const distances =
+    precomputedDistances ??
+    computeDistanceVectors(map, beliefs.getAllAgents(), pos)[0];
   if (!distances || distances.length === 0 || distances[0].length === 0) {
     error("Distances not computed, cannot sort delivery tiles");
     return [];
@@ -265,10 +268,9 @@ export function generateSmartPlan(beliefs: BeliefSet): Queue<Action> | null {
   return null;
 }
 
-export function generateHuntingPlan(
-  beliefs: BeliefSet,
-  targetPos: Position,
-): Queue<Action> {
+export function generateHuntingPlan(beliefs: BeliefSet): Queue<Action> {
+  // TODO: Find here were to go
+
   const map = beliefs.getMap();
   const pos = beliefs.getAgentPos();
   const agents = beliefs.getAllAgents();

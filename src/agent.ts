@@ -16,8 +16,8 @@ import Message, {
   HandshakeMsg,
   ParcelsDeletedMsg,
 } from "src/coordination/message";
-import { IntentionSelector } from "src/intentions";
-import { Action, Intention } from "src/intents";
+import { Intention, getIntention } from "src/intentions";
+import { Action } from "src/intents";
 import {
   PddlPlanner,
   generateHuntingPlan,
@@ -36,7 +36,6 @@ export default class Agent {
   private id: string;
   private beliefs: BeliefSet;
   private pddlPlanner: PddlPlanner;
-  private intentionSelector: IntentionSelector;
   private connectionManager: ConnectionManager;
   private lastTimestampUpdate: Timestamp | null = null;
   private plan: Queue<Action> = new Queue<Action>();
@@ -68,7 +67,6 @@ export default class Agent {
       x: Math.floor(me.x),
       y: Math.floor(me.y),
     });
-    this.intentionSelector = new IntentionSelector(me.id);
     this.pddlPlanner = new PddlPlanner(me.id, this.beliefs);
     this.connectionManager = new ConnectionManager(this);
   }
@@ -310,6 +308,8 @@ export default class Agent {
     }
 
     // 0. Process if is multiagent mode TODO:
+    const isMultipleAgentsMode = this.beliefs.getGroupAgents().size !== 0;
+    const isMasterAgent = this.beliefs.getMasterAgentId() === this.id;
 
     // 1. Check if beliefs changed → invalidate current plan
     const beliefsChecksum = this.beliefs.getChecksumOfBeliefs();
@@ -320,6 +320,8 @@ export default class Agent {
       info(`Beliefs changed, clearing plan`, this.id);
 
       this.plan = new Queue<Action>();
+
+      // TODO: Invalidate plan of slaves
     }
 
     // 2. Dequeue next action from current plan
@@ -327,12 +329,25 @@ export default class Agent {
 
     // 3. If plan is empty → select intention → generate new plan
     if (nextAction === undefined) {
-      info(
-        `Plan is empty, selecting new intention and generating plan`,
-        this.id,
-      );
-      const intention = this.intentionSelector.selectIntention(this.beliefs);
-      this.plan = await this.generatePlan(intention);
+      // Single agent mode
+      if (!isMultipleAgentsMode) {
+        info(
+          `Plan is empty, selecting new intention and generating plan`,
+          this.id,
+        );
+        const intention = getIntention(this.beliefs);
+        this.plan = await this.generatePlan(intention);
+      }
+      // If is master generate a planm
+      else if (isMasterAgent) {
+        info(
+          `Master agent: plan is empty, selecting new intention and generating plan`,
+          this.id,
+        );
+        // this.plan = await this.generateMultiagentPlan();
+
+        // TODO: send plan to slaves
+      }
       return;
     }
 
@@ -429,33 +444,13 @@ export default class Agent {
   async generatePlan(intention: Intention): Promise<Queue<Action>> {
     switch (intention.kind) {
       case "explore_spawn": {
-        info(`Planning: explore spawn tile`, this.id);
-        return generateHuntingPlan(this.beliefs, intention.pos);
+        return generateHuntingPlan(this.beliefs);
       }
       case "deliver_parcels": {
-        info(`Planning: deliver parcels`, this.id);
-        const plan =
-          config.planner === "pddl"
-            ? await this.pddlPlanner.solvePddlProblem()
-            : generateSmartPlan(this.beliefs);
-
-        if (plan === null) {
-          warn(`Planner failed, falling back to exploring`, this.id);
-          const spawnTiles = this.beliefs.getSpawnableTiles();
-          if (spawnTiles.length === 0) {
-            const q = new Queue<Action>();
-            q.push(Action.NOOP);
-            return q;
-          }
-          const target =
-            spawnTiles[Math.floor(Math.random() * spawnTiles.length)];
-          return generateHuntingPlan(this.beliefs, target.pos);
-        }
-        return plan;
+        return; // TODO: generate plan to go to deliver pos
       }
       case "go_pickup": {
-        info(`Planning: go pickup parcel`, this.id);
-        return generateSmartPlan(this.beliefs) ?? new Queue<Action>();
+        return; //TODO: generate plan to go and pickup
       }
       case "noop": {
         const q = new Queue<Action>();

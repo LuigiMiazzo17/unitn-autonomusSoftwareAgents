@@ -79,6 +79,16 @@ export class ReducedBeliefSet {
       .digest("hex");
   }
 
+  getMasterAgentId(): string | null {
+    if (this.groupAgents.size === 0) {
+      return null;
+    }
+    const sortedGroupAgents = Array.from(this.groupAgents.values()).sort(
+      (a, b) => a.getId().localeCompare(b.getId()),
+    );
+    return sortedGroupAgents[0].getId();
+  }
+
   updateKnownParcels(parcels: Map<string, Parcel>): void {
     this.knownParcels = parcels;
   }

@@ -6,5 +6,12 @@ import Agent from "src/agent";
 // });
 
 const agent = await Agent.build({});
+const agent1 = await Agent.build({});
 
-await agent.run();
+agent.run();
+agent1.run();
+
+setTimeout(() => {
+  agent.stop();
+  agent1.stop();
+}, 60000);
