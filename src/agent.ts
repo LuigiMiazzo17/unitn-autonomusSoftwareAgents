@@ -408,9 +408,9 @@ export default class Agent {
       return false;
     }
     this.beliefs.updateAgentPos(expected);
-    if (this.beliefs.isOnSpawnableTile()) {
-      this.beliefs.markCurrentSpawnableTileChecked();
-    }
+    this.beliefs.markVisibleSpawnableTilesSeen(
+      config.parcelSensingDistance - 1,
+    );
     return true;
   }
 

@@ -1,5 +1,6 @@
 import { AgentFromUpdate } from "@unitn-asa/deliveroo-js-client";
 import { Position } from "src/beliefs/types";
+import { manhattanDistance } from "src/utils/math";
 
 export class MeAgent {
   protected id: string;
@@ -20,7 +21,7 @@ export class MeAgent {
    * @returns The Manhattan distance as a number.
    */
   manhattanDistance(pos: Position): number {
-    return Math.abs(this.pos.x - pos.x) + Math.abs(this.pos.y - pos.y);
+    return manhattanDistance(this.getPos(), pos);
   }
 
   isOn(pos: Position): boolean {

@@ -7,6 +7,7 @@ export default class MapBelief {
   private mapVersion: number = 0;
   private deliveryTiles: Position[] = [];
   private spawnableTiles: SpawnableTiles[] = [];
+  private spawnableObservationTimestamp: number = 0;
 
   constructor(unserialized_map: {
     width: number;
@@ -63,15 +64,59 @@ export default class MapBelief {
   }
 
   markSpawnableTileChecked(pos: Position): void {
-    const spawnableTile = this.spawnableTiles.find(
-      (tile) => tile.pos.x === pos.x && tile.pos.y === pos.y,
+    const currentTimestamp = this.nextSpawnableObservationTimestamp();
+    this.markSpawnableTileSeen(pos, currentTimestamp);
+  }
+
+  getSpawnableTilesLastSeen(): Record<string, number> {
+    return Object.fromEntries(
+      this.spawnableTiles.map((tile) => [
+        `${tile.pos.x},${tile.pos.y}`,
+        tile.lastSeenTimestamp,
+      ]),
     );
-    if (spawnableTile) {
-      spawnableTile.checkedCount += 1;
+  }
+
+  mergeSpawnableTilesLastSeen(externalLastSeen: Record<string, number>): void {
+    for (const tile of this.spawnableTiles) {
+      const key = `${tile.pos.x},${tile.pos.y}`;
+      const externalTimestamp = externalLastSeen[key];
+      if (
+        externalTimestamp !== undefined &&
+        externalTimestamp > tile.lastSeenTimestamp
+      ) {
+        tile.lastSeenTimestamp = externalTimestamp;
+      }
+      this.spawnableObservationTimestamp = Math.max(
+        this.spawnableObservationTimestamp,
+        tile.lastSeenTimestamp,
+      );
+    }
+  }
+
+  markSpawnableTilesSeenInRadius(center: Position, radius: number): void {
+    const normalizedCenter = normalizePos(center);
+    const clampedRadius = Math.max(0, radius);
+    const radiusSquared = clampedRadius * clampedRadius;
+    const currentTimestamp = this.nextSpawnableObservationTimestamp();
+
+    for (const tile of this.spawnableTiles) {
+      const dx = tile.pos.x - normalizedCenter.x;
+      const dy = tile.pos.y - normalizedCenter.y;
+      if (dx * dx + dy * dy <= radiusSquared) {
+        tile.lastSeenTimestamp = currentTimestamp;
+      }
     }
   }
 
   update(map: TileType[][]): void {
+    const previousLastSeenByTile = new Map<string, number>(
+      this.spawnableTiles.map((tile) => [
+        `${tile.pos.x},${tile.pos.y}`,
+        tile.lastSeenTimestamp,
+      ]),
+    );
+
     this.map = map;
     this.mapVersion += 1;
 
@@ -88,9 +133,39 @@ export default class MapBelief {
         row
           .map((tile, x) => (tile === TileType.SPAWNABLE ? { x, y } : null))
           .filter((pos) => pos !== null)
-          .map((pos) => ({ pos: pos as Position, checkedCount: 0 })),
+          .map((pos) => {
+            const tilePos = pos as Position;
+            const key = `${tilePos.x},${tilePos.y}`;
+            return {
+              pos: tilePos,
+              lastSeenTimestamp: previousLastSeenByTile.get(key) ?? 0,
+            };
+          }),
       )
       .flat() as SpawnableTiles[];
+
+    this.spawnableObservationTimestamp = this.spawnableTiles.reduce(
+      (latest, tile) => Math.max(latest, tile.lastSeenTimestamp),
+      this.spawnableObservationTimestamp,
+    );
+  }
+
+  private nextSpawnableObservationTimestamp(): number {
+    const now = Date.now();
+    this.spawnableObservationTimestamp = Math.max(
+      this.spawnableObservationTimestamp + 1,
+      now,
+    );
+    return this.spawnableObservationTimestamp;
+  }
+
+  private markSpawnableTileSeen(pos: Position, timestamp: number): void {
+    const spawnableTile = this.spawnableTiles.find(
+      (tile) => tile.pos.x === pos.x && tile.pos.y === pos.y,
+    );
+    if (spawnableTile) {
+      spawnableTile.lastSeenTimestamp = timestamp;
+    }
   }
 
   contains(pos: Position): boolean {

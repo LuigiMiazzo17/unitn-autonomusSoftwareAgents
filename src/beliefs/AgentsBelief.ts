@@ -63,13 +63,15 @@ export default class AgentsBelief {
       else this.setForeignAgent(agent);
     }
 
+    const safetyMargin = 1;
+
     // Get all known agentIds that are within agent sensing range,
     // if not present in the update, remove them because they are expired.
     const deletedAgentIds = new Set<string>();
     for (const [agentId, agent] of this.foreignAgents) {
       const distance = this.me.manhattanDistance(agent.getPos());
       if (
-        distance < config.agentSensingDistance &&
+        distance < config.agentSensingDistance - safetyMargin &&
         !agents.some((a) => a.id === agentId)
       ) {
         deletedAgentIds.add(agentId);

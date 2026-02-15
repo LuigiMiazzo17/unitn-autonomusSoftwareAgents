@@ -15,16 +15,23 @@ import { debug } from "src/utils/log";
 export class ReducedBeliefSet {
   protected agentsBelief: AgentsBelief;
   protected parcelsBelief: ParcelsBelief;
+  protected spawnableTilesLastSeen: Record<string, number> = {};
 
   constructor(id: string, pos: Position) {
     this.agentsBelief = new AgentsBelief(id, pos);
     this.parcelsBelief = new ParcelsBelief();
   }
 
-  static fromJSON(o: object): ReducedBeliefSet {
+  static fromJSON(o: Record<string, unknown>): ReducedBeliefSet {
     const rbs = Object.assign(new ReducedBeliefSet("", { x: 0, y: 0 }), o);
-    rbs.agentsBelief = AgentsBelief.fromJSON(o["agentsBelief"]);
-    rbs.parcelsBelief = ParcelsBelief.fromJSON(o["parcelsBelief"]);
+    rbs.agentsBelief = AgentsBelief.fromJSON(
+      (o["agentsBelief"] ?? {}) as object,
+    );
+    rbs.parcelsBelief = ParcelsBelief.fromJSON(
+      (o["parcelsBelief"] ?? {}) as object,
+    );
+    rbs.spawnableTilesLastSeen =
+      (o["spawnableTilesLastSeen"] as Record<string, number> | undefined) ?? {};
     return rbs;
   }
 
@@ -145,13 +152,32 @@ export class ReducedBeliefSet {
   merge(otherAgentBeliefs: ReducedBeliefSet, updateSeen: boolean = true): void {
     this.agentsBelief.merge(otherAgentBeliefs.agentsBelief, updateSeen);
     this.parcelsBelief.merge(otherAgentBeliefs.parcelsBelief);
+    this.mergeSpawnableTilesLastSeen(
+      otherAgentBeliefs.getSpawnableTilesLastSeen(),
+    );
   }
 
   toObject(): object {
     return {
       parcelsBelief: this.parcelsBelief,
       agentsBelief: this.agentsBelief,
+      spawnableTilesLastSeen: this.getSpawnableTilesLastSeen(),
     };
+  }
+
+  protected getSpawnableTilesLastSeen(): Record<string, number> {
+    return this.spawnableTilesLastSeen;
+  }
+
+  protected mergeSpawnableTilesLastSeen(
+    otherTilesLastSeen: Record<string, number>,
+  ): void {
+    for (const [key, timestamp] of Object.entries(otherTilesLastSeen)) {
+      const currentTimestamp = this.spawnableTilesLastSeen[key] ?? 0;
+      if (timestamp > currentTimestamp) {
+        this.spawnableTilesLastSeen[key] = timestamp;
+      }
+    }
   }
 }
 
@@ -190,6 +216,7 @@ export class BeliefSet extends ReducedBeliefSet {
   updateMap(width: number, height: number, tiles: Tile[]): void {
     const map = MapBelief.fromRawMap({ width, height, tiles });
     this.mapBelief.update(map);
+    this.mapBelief.mergeSpawnableTilesLastSeen(this.spawnableTilesLastSeen);
     this.agentsBelief.clear();
     this.parcelsBelief.clear();
   }
@@ -215,6 +242,23 @@ export class BeliefSet extends ReducedBeliefSet {
 
   markCurrentSpawnableTileChecked() {
     this.mapBelief.markSpawnableTileChecked(this.getAgentPos());
+  }
+
+  markVisibleSpawnableTilesSeen(sensingDistance: number): void {
+    this.mapBelief.markSpawnableTilesSeenInRadius(
+      this.getAgentPos(),
+      sensingDistance,
+    );
+  }
+
+  protected getSpawnableTilesLastSeen(): Record<string, number> {
+    return this.mapBelief.getSpawnableTilesLastSeen();
+  }
+
+  protected mergeSpawnableTilesLastSeen(
+    otherTilesLastSeen: Record<string, number>,
+  ): void {
+    this.mapBelief.mergeSpawnableTilesLastSeen(otherTilesLastSeen);
   }
 
   updateKnownParcelsFromParcelUpdate(
