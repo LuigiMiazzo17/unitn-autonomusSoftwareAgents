@@ -408,7 +408,9 @@ export default class Agent {
       return false;
     }
     this.beliefs.updateAgentPos(expected);
-    this.beliefs.markVisibleSpawnableTilesSeen(config.parcelSensingDistance);
+    this.beliefs.markVisibleSpawnableTilesSeen(
+      config.parcelSensingDistance - 1,
+    );
     return true;
   }
 

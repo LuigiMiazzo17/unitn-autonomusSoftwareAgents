@@ -168,9 +168,6 @@ export default class ParcelsBelief {
         distance < config.parcelSensingDistance - safetyMargin &&
         !parcelIds.includes(parcelId)
       ) {
-        console.log("DELETING");
-        console.log(parcels);
-        console.log(agent.getPos());
         this.knownParcels.delete(parcelId);
         deletedParcelIds.add(parcelId);
         debug(

@@ -69,7 +69,7 @@ export default class AgentsBelief {
     for (const [agentId, agent] of this.foreignAgents) {
       const distance = this.me.manhattanDistance(agent.getPos());
       if (
-        distance < config.agentSensingDistance &&
+        distance < config.agentSensingDistance - 1 &&
         !agents.some((a) => a.id === agentId)
       ) {
         deletedAgentIds.add(agentId);

@@ -68,6 +68,32 @@ export default class MapBelief {
     this.markSpawnableTileSeen(pos, currentTimestamp);
   }
 
+  getSpawnableTilesLastSeen(): Record<string, number> {
+    return Object.fromEntries(
+      this.spawnableTiles.map((tile) => [
+        `${tile.pos.x},${tile.pos.y}`,
+        tile.lastSeenTimestamp,
+      ]),
+    );
+  }
+
+  mergeSpawnableTilesLastSeen(externalLastSeen: Record<string, number>): void {
+    for (const tile of this.spawnableTiles) {
+      const key = `${tile.pos.x},${tile.pos.y}`;
+      const externalTimestamp = externalLastSeen[key];
+      if (
+        externalTimestamp !== undefined &&
+        externalTimestamp > tile.lastSeenTimestamp
+      ) {
+        tile.lastSeenTimestamp = externalTimestamp;
+      }
+      this.spawnableObservationTimestamp = Math.max(
+        this.spawnableObservationTimestamp,
+        tile.lastSeenTimestamp,
+      );
+    }
+  }
+
   markSpawnableTilesSeenInRadius(center: Position, radius: number): void {
     const normalizedCenter = normalizePos(center);
     const clampedRadius = Math.max(0, radius);
@@ -125,7 +151,11 @@ export default class MapBelief {
   }
 
   private nextSpawnableObservationTimestamp(): number {
-    this.spawnableObservationTimestamp += 1;
+    const now = Date.now();
+    this.spawnableObservationTimestamp = Math.max(
+      this.spawnableObservationTimestamp + 1,
+      now,
+    );
     return this.spawnableObservationTimestamp;
   }
 
