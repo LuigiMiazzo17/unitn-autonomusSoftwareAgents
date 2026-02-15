@@ -6,6 +6,7 @@ import config from "config";
 
 export default class ParcelsBelief {
   private knownParcels: Map<string, Parcel> = new Map<string, Parcel>();
+  private parcelsHandedOff: Set<string> = new Set<string>();
 
   static fromJSON(o: object): ParcelsBelief {
     const pb = Object.assign(new ParcelsBelief(), o);
@@ -53,6 +54,19 @@ export default class ParcelsBelief {
     debug(`Cleared carrying parcels`);
   }
 
+  handoffParcels(agentId: string) {
+    for (const [parcelId, parcel] of this.knownParcels.entries()) {
+      if (parcel.getCarriedBy() === agentId) {
+        this.parcelsHandedOff.add(parcelId);
+        this.knownParcels.delete(parcelId);
+      }
+    }
+  }
+
+  ignoreParcel(parcelId: string): boolean {
+    return this.parcelsHandedOff.has(parcelId);
+  }
+
   removeParcelsById(parcelIds: Set<string>): void {
     for (const parcelId of parcelIds) {
       if (this.knownParcels.has(parcelId)) {
@@ -86,7 +100,9 @@ export default class ParcelsBelief {
   }
 
   private setParcel(parcel: Parcel): void {
-    this.knownParcels.set(parcel.getId(), parcel);
+    if (!this.ignoreParcel(parcel.getId())) {
+      this.knownParcels.set(parcel.getId(), parcel);
+    }
   }
 
   merge(otherParcelsBelief: ParcelsBelief) {

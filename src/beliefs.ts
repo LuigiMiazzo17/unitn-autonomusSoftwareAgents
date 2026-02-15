@@ -40,11 +40,11 @@ export class ReducedBeliefSet {
     this.agentsBelief.me.updatePos(pos);
   }
 
-  getCarryingParcels(): Set<string> {
-    const carrying = new Set<string>();
+  getCarriedParcels(): Set<Parcel> {
+    const carrying = new Set<Parcel>();
     for (const parcel of this.parcelsBelief.getParcels()) {
       if (parcel.getCarriedBy() === this.getAgentId()) {
-        carrying.add(parcel.getId());
+        carrying.add(parcel);
       }
     }
     return carrying;
@@ -102,6 +102,14 @@ export class ReducedBeliefSet {
     this.parcelsBelief.deliverParcels(this.getAgentId());
   }
 
+  handoffParcels(): void {
+    this.parcelsBelief.handoffParcels(this.getAgentId());
+  }
+
+  ignoreParcel(parcelId: string): boolean {
+    return this.parcelsBelief.ignoreParcel(parcelId);
+  }
+
   removeParcelsById(parcelIds: Set<string>): void {
     this.parcelsBelief.removeParcelsById(parcelIds);
   }
@@ -126,7 +134,7 @@ export class ReducedBeliefSet {
     this.agentsBelief.removeForeignAgentsById(agentIds);
   }
 
-  getGroupAgents(): Map<string, ExternalAgent> {
+  getGroupAgents(): MapIterator<ExternalAgent> {
     return this.agentsBelief.getGroupAgents();
   }
 
@@ -159,6 +167,18 @@ export class BeliefSet extends ReducedBeliefSet {
     return this.mapBelief.getMap();
   }
 
+  isWalkable(pos: Position): boolean {
+    const tile = this.mapBelief.getTile(pos);
+    const tileTypeWalkable =
+      tile === TileType.EMPTY ||
+      tile === TileType.DELIVERY ||
+      tile === TileType.SPAWNABLE;
+    const occupiedByAgent = Array.from(this.agentsBelief.getAllAgents()).some(
+      (agent) => agent.isOn(pos),
+    );
+    return tileTypeWalkable && !occupiedByAgent;
+  }
+
   updateMap(width: number, height: number, tiles: Tile[]): void {
     const map = MapBelief.fromRawMap({ width, height, tiles });
     this.mapBelief.update(map);
@@ -171,7 +191,7 @@ export class BeliefSet extends ReducedBeliefSet {
   }
 
   private isDeliveryAvailable(): boolean {
-    if (this.getCarryingParcels().size !== 0 && this.isOnDeliveryTile()) {
+    if (this.getCarriedParcels().size !== 0 && this.isOnDeliveryTile()) {
       return true;
     }
     return false;

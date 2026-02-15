@@ -1,4 +1,5 @@
 import { BeliefSet } from "src/beliefs";
+import { Position } from "src/beliefs/types";
 import { Intention } from "src/intentions/types";
 import {
   computeDistanceVectors,
@@ -19,7 +20,7 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
     distanceVector,
   );
 
-  if (beliefs.getCarryingParcels().size > 0) {
+  if (beliefs.getCarriedParcels().size > 0) {
     if (closestDeliveryTiles.length > 0) {
       const bestTile = closestDeliveryTiles[0];
 
@@ -35,7 +36,8 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
     .filter(
       (p) =>
         p.getCarriedBy() === null &&
-        distanceVector[p.getPos().y][p.getPos().x] !== Infinity,
+        distanceVector[p.getPos().y][p.getPos().x] !== Infinity &&
+        !beliefs.ignoreParcel(p.getId()),
     )
     .map((p) => [p, distanceVector[p.getPos().y][p.getPos().x]] as const);
   for (const [parcel, distance] of availableParcels) {
@@ -61,5 +63,35 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
     }
   }
 
+  const handoffParcels = beliefs.getCarriedParcels();
+
+  for (const parcel of handoffParcels) {
+    for (const agentPos of Array.from(beliefs.getGroupAgents()).map((a) =>
+      a.getPos(),
+    )) {
+      for (const nearPos of near(agentPos)) {
+        if (
+          beliefs.isWalkable(nearPos) &&
+          distanceVector[nearPos.y][nearPos.x] !== Infinity
+        ) {
+          intentions.push({
+            kind: "handoff",
+            distance: distanceVector[nearPos.y][nearPos.x],
+            parcelId: parcel.getId(),
+            pos: nearPos,
+          });
+        }
+      }
+    }
+  }
   return intentions;
+}
+
+function near(pos: Position): Position[] {
+  return [
+    { x: pos.x + 1, y: pos.y },
+    { x: pos.x - 1, y: pos.y },
+    { x: pos.x, y: pos.y + 1 },
+    { x: pos.x, y: pos.y - 1 },
+  ];
 }

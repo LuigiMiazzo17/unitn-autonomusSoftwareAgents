@@ -374,6 +374,8 @@ export default class Agent {
         return await this.pickup();
       case Action.DELIVER:
         return await this.deliver();
+      case Action.HANDOFF:
+        return await this.deliver(true);
       case Action.NOOP:
         return true;
       default:
@@ -421,13 +423,16 @@ export default class Agent {
     return true;
   }
 
-  async deliver(): Promise<boolean> {
+  async deliver(handoff: boolean = false): Promise<boolean> {
+    // NOTE: This must be before the API call because otherwise stuff will be overwritten by the onParcelSensing hook.
+    if (handoff) this.beliefs.handoffParcels();
+    else this.beliefs.deliverParcels();
+
     const result = await this.apiConnection.emitPutdown();
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
       return false;
     }
-    this.beliefs.deliverParcels();
     return true;
   }
 
@@ -437,6 +442,12 @@ export default class Agent {
       case "explore_spawn":
         plan = generatePlanToPos(this.beliefs, intention.tile.pos);
         break;
+
+      case "handoff": {
+        plan = generatePlanToPos(this.beliefs, intention.pos);
+        plan.push(Action.HANDOFF);
+        break;
+      }
 
       case "deliver_parcels":
         plan = generatePlanToPos(this.beliefs, intention.pos);

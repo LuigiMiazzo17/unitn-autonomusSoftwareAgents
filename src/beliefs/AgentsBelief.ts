@@ -31,8 +31,8 @@ export default class AgentsBelief {
     return belief;
   }
 
-  getGroupAgents(): Map<string, ExternalAgent> {
-    return this.groupAgents;
+  getGroupAgents(): MapIterator<ExternalAgent> {
+    return this.groupAgents.values();
   }
 
   getAllAgents(): ExternalAgent[] {

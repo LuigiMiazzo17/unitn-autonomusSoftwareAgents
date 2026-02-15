@@ -47,13 +47,15 @@ export default class ConnectionManager {
     while (!this.agentRef.isStopped()) {
       const now = new Date();
       const agentBeliefs = this.agentRef.getBeliefSet();
-      for (const [agentId, agent] of agentBeliefs.getGroupAgents().entries()) {
+      for (const agent of agentBeliefs.getGroupAgents()) {
         if (
           now.getTime() - agent.getLastSeen().getTime() >
           ConnectionManager.BEACON_INTERVAL_MS * 2
         ) {
-          warn(`Agent ${agentId} removed from known agents due to inactivity.`);
-          agentBeliefs.removeAgent(agentId);
+          warn(
+            `Agent ${agent.getId()} removed from known agents due to inactivity.`,
+          );
+          agentBeliefs.removeAgent(agent.getId());
         }
       }
 
