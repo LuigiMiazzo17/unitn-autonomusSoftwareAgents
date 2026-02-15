@@ -3,32 +3,28 @@ import {
   Parcel as DeliverooParcelType,
   Tile,
 } from "@unitn-asa/deliveroo-js-client";
-import config from "config";
 import crypto from "crypto";
-import { debug, error, warn } from "src/utils/log";
+import { debug } from "src/utils/log";
 import { Position, SpawnableTiles, TileType } from "./beliefs/types";
 import Parcel from "./beliefs/Parcel";
 import { ExternalAgent } from "./beliefs/agents";
 import MapBelief from "./beliefs/MapBelief";
 import AgentsBelief from "./beliefs/AgentsBelief";
+import ParcelsBelief from "./beliefs/ParcelsBelief";
 
 export class ReducedBeliefSet {
-  protected knownParcels: Map<string, Parcel> = new Map<string, Parcel>();
   protected agentsBelief: AgentsBelief;
+  protected parcelsBelief: ParcelsBelief;
 
   constructor(id: string, pos: Position) {
     this.agentsBelief = new AgentsBelief(id, pos);
+    this.parcelsBelief = new ParcelsBelief();
   }
 
   static fromJSON(o: object): ReducedBeliefSet {
     const rbs = Object.assign(new ReducedBeliefSet("", { x: 0, y: 0 }), o);
     rbs.agentsBelief = AgentsBelief.fromJSON(o["agentsBelief"]);
-    rbs.knownParcels = new Map<string, Parcel>(
-      Object.entries(o["knownParcels"]).map(([id, parcel]) => [
-        id,
-        Object.assign(new Parcel(id, { x: 0, y: 0 }, 0), parcel),
-      ]),
-    );
+    rbs.parcelsBelief = ParcelsBelief.fromJSON(o["parcelsBelief"]);
     return rbs;
   }
 
@@ -46,16 +42,16 @@ export class ReducedBeliefSet {
 
   getCarryingParcels(): Set<string> {
     const carrying = new Set<string>();
-    for (const [parcelId, parcel] of this.knownParcels.entries()) {
+    for (const parcel of this.parcelsBelief.getParcels()) {
       if (parcel.getCarriedBy() === this.getAgentId()) {
-        carrying.add(parcelId);
+        carrying.add(parcel.getId());
       }
     }
     return carrying;
   }
 
   getChecksumOfBeliefs(): string {
-    const parcelsStr = Array.from(this.knownParcels.values())
+    const parcelsStr = Array.from(this.parcelsBelief.getParcels())
       .map((p) => {
         let carriedBy = p.getCarriedBy() ?? "null";
         if (p.getCarriedBy() == this.getAgentId()) {
@@ -83,31 +79,18 @@ export class ReducedBeliefSet {
     return this.agentsBelief.getMasterAgentId();
   }
 
-  updateKnownParcels(parcels: Map<string, Parcel>): void {
-    this.knownParcels = parcels;
-  }
-
-  getParcels(): Map<string, Parcel> {
-    return this.knownParcels;
+  getParcels(): MapIterator<Parcel> {
+    return this.parcelsBelief.getParcels();
   }
 
   pickupParcel(parcelId: string): void {
-    const parcel = this.knownParcels.get(parcelId);
-    if (!parcel) {
-      error(`Cannot pick up parcel ${parcelId} - not found in known parcels`);
-      return;
-    }
-    parcel.setCarriedBy(this.getAgentId());
-    debug(`Picked parcel ${parcelId}`);
+    this.parcelsBelief.pickupParcel(parcelId, this.getAgentId());
   }
 
   pickupParcelFailedFromAction(): void {
-    for (const parcel of this.knownParcels.values()) {
-      if (
-        this.getAgentPos().x === parcel.getPos().x &&
-        this.getAgentPos().y === parcel.getPos().y
-      ) {
-        this.knownParcels.delete(parcel.getId());
+    for (const parcel of this.parcelsBelief.getParcels()) {
+      if (this.agentsBelief.me.isOn(parcel.getPos())) {
+        this.parcelsBelief.deleteParcel(parcel.getId());
         debug(
           `Pickup failed for parcel ${parcel.getId()}, removing from discovered`,
         );
@@ -115,35 +98,16 @@ export class ReducedBeliefSet {
     }
   }
 
-  clearParcels(): void {
-    for (const [parcelId, parcel] of this.knownParcels.entries()) {
-      if (parcel.getCarriedBy() === this.getAgentId()) {
-        this.knownParcels.delete(parcelId);
-      }
-    }
-    debug(`Cleared carrying parcels`);
+  clearCarriedParcels(): void {
+    this.parcelsBelief.clearCarriedParcels(this.getAgentId());
   }
 
   removeParcelsById(parcelIds: Set<string>): void {
-    for (const parcelId of parcelIds) {
-      if (this.knownParcels.has(parcelId)) {
-        this.knownParcels.delete(parcelId);
-        debug(`Removed parcel ${parcelId} from known parcels`);
-      }
-    }
+    this.parcelsBelief.removeParcelsById(parcelIds);
   }
 
-  isPickupAvailable(): boolean {
-    for (const parcel of this.knownParcels.values()) {
-      if (
-        this.getAgentPos().x === parcel.getPos().x &&
-        this.getAgentPos().y === parcel.getPos().y &&
-        !parcel.getCarriedBy()
-      ) {
-        return true;
-      }
-    }
-    return false;
+  private isPickupAvailable(): boolean {
+    return this.parcelsBelief.isPickupAvailable(this.agentsBelief.me);
   }
 
   getAllAgents(): ExternalAgent[] {
@@ -166,52 +130,14 @@ export class ReducedBeliefSet {
     return this.agentsBelief.getGroupAgents();
   }
 
-  mergeFromMessage(
-    otherAgentId: string,
-    otherAgentBeliefs: ReducedBeliefSet,
-    updateSeen: boolean = true,
-  ): void {
+  merge(otherAgentBeliefs: ReducedBeliefSet, updateSeen: boolean = true): void {
     this.agentsBelief.merge(otherAgentBeliefs.agentsBelief, updateSeen);
-
-    for (const [parcelId, parcel] of otherAgentBeliefs.knownParcels.entries()) {
-      const optionalParcel = this.knownParcels.get(parcelId);
-      if (!optionalParcel) {
-        debug(
-          `Adding new known parcel ${parcelId} from message of ${otherAgentId}`,
-        );
-        this.knownParcels.set(parcelId, parcel);
-        continue;
-      }
-
-      // Skip updates of parcels older than the last update we have for the same parcel
-      if (optionalParcel.getLastSeen() > parcel.getLastSeen()) {
-        debug(
-          `Skipping update of parcel ${parcelId} from message of ${otherAgentId} because it's older than our last seen`,
-        );
-        continue;
-      }
-
-      debug(
-        `Updating known parcel ${parcelId} from message of ${otherAgentId}`,
-      );
-      this.knownParcels.set(parcelId, parcel);
-    }
+    this.parcelsBelief.merge(otherAgentBeliefs.parcelsBelief);
   }
 
   toObject(): object {
-    const knownParcelsObj = {};
-    for (const [parcelId, parcel] of this.knownParcels.entries()) {
-      knownParcelsObj[parcelId] = {
-        id: parcel.getId(),
-        x: parcel.getPos().x,
-        y: parcel.getPos().y,
-        carriedBy: parcel.getCarriedBy() ?? null,
-        reward: parcel.getReward(),
-        lastSeen: parcel.getLastSeen(),
-      };
-    }
     return {
-      knownParcels: knownParcelsObj,
+      parcelsBelief: this.parcelsBelief,
       agentsBelief: this.agentsBelief,
     };
   }
@@ -236,26 +162,22 @@ export class BeliefSet extends ReducedBeliefSet {
   updateMap(width: number, height: number, tiles: Tile[]): void {
     const map = MapBelief.convertMap({ width, height, tiles });
     this.mapBelief.update(map);
-    this.agentsBelief.reset();
-    this.knownParcels = new Map<string, Parcel>();
-  }
-
-  getDeliveryTiles(): Position[] {
-    return this.mapBelief.getDeliveryTiles();
+    this.agentsBelief.clear();
+    this.parcelsBelief.clear();
   }
 
   getSpawnableTiles(): SpawnableTiles[] {
     return this.mapBelief.getSpawnableTiles();
   }
 
-  isDeliveryAvailable(): boolean {
+  private isDeliveryAvailable(): boolean {
     if (this.getCarryingParcels().size !== 0 && this.isOnDeliveryTile()) {
       return true;
     }
     return false;
   }
 
-  isOnDeliveryTile(): boolean {
+  private isOnDeliveryTile(): boolean {
     if (!this.mapBelief.contains(this.getAgentPos())) {
       return false;
     }
@@ -269,95 +191,16 @@ export class BeliefSet extends ReducedBeliefSet {
   }
 
   deliverParcel(parcelId: string): void {
-    if (this.knownParcels.has(parcelId)) {
-      this.knownParcels.delete(parcelId);
-      debug(`Delivered parcel ${parcelId}`);
-    } else {
-      warn(`Cannot deliver parcel ${parcelId} - not carrying it`);
-    }
-
-    if (this.isOnDeliveryTile()) {
-      this.knownParcels.delete(parcelId);
-      debug(`Removed parcel ${parcelId} from parcels list`);
-    }
+    this.parcelsBelief.deliverParcel(parcelId);
   }
 
   updateKnownParcelsFromParcelUpdate(
     parcels: DeliverooParcelType[],
   ): Set<string> {
-    const carryingParcels = this.getCarryingParcels();
+    const inMapParcels = parcels.filter((parcel) =>
+      this.mapBelief.contains(parcel),
+    );
 
-    for (const parcel of parcels) {
-      if (!this.mapBelief.contains(parcel)) {
-        error(`Position of parcel out of bounds: (${parcel.x}, ${parcel.y})`);
-        continue;
-      }
-      const optionalParcel = this.knownParcels.get(parcel.id);
-      if (optionalParcel) {
-        // We already knew about the parcel
-        optionalParcel.setPos({
-          x: Math.floor(parcel.x),
-          y: Math.floor(parcel.y),
-        });
-        optionalParcel.setCarriedBy(parcel.carriedBy);
-        optionalParcel.setReward(parcel.reward);
-        optionalParcel.setSeen();
-
-        // we discover that the parcel is now being carried by us
-        if (
-          parcel.carriedBy &&
-          parcel.carriedBy === this.getAgentId() &&
-          !carryingParcels.has(parcel.id)
-        ) {
-          optionalParcel.setCarriedBy(this.getAgentId());
-
-          debug(`Parcel ${parcel.id} is now carried by ${parcel.carriedBy}`);
-        }
-      } else {
-        // New parcel discovered
-        this.knownParcels.set(
-          parcel.id,
-          Parcel.FromDeliverooParcelUpdate(parcel),
-        );
-        if (parcel.carriedBy && parcel.carriedBy === this.getAgentId()) {
-          error(
-            `Parcel ${parcel.id} is already carried by us but we didn't know about it, adding to carrying parcels`,
-          );
-        }
-        debug(`Discovered new parcel ${parcel.id}`);
-      }
-    }
-
-    // While transporting a parcel, if it expires drop it
-    const parcelIds = parcels.map((p) => p.id);
-    for (const parcelId of this.getCarryingParcels()) {
-      if (!parcelIds.includes(parcelId)) {
-        this.knownParcels.delete(parcelId);
-        debug(`Parcel ${parcelId} dropped`, this.getAgentId());
-      }
-    }
-
-    // Get all known parcelIds that are within parcel sensing range,
-    // if not present in the update, remove them because they are expired.
-    // Distance is not gemoetric, but the number of tiles between the agent and
-    // the parcel, considering also walls
-
-    const deletedParcelIds = new Set<string>();
-    for (const [parcelId, parcel] of this.knownParcels.entries()) {
-      const distance = this.agentsBelief.me.manhattanDistance(parcel.getPos());
-      if (
-        distance <= config.parcelSensingDistance &&
-        !parcelIds.includes(parcelId)
-      ) {
-        this.knownParcels.delete(parcelId);
-        deletedParcelIds.add(parcelId);
-        debug(
-          `Parcel ${parcelId} is within sensing range but not in the update, removing from known parcels`,
-        );
-      }
-    }
-
-    debug(`Updated parcels: ${this.knownParcels.size}`);
-    return deletedParcelIds;
+    return this.parcelsBelief.updateParcels(inMapParcels, this.agentsBelief.me);
   }
 }

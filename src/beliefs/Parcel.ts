@@ -22,7 +22,7 @@ export default class Parcel {
     this.lastSeen = lastSeen ?? new Date();
   }
 
-  static FromDeliverooParcelUpdate(parcel: DeliverooParcelType): Parcel {
+  static fromUpdateParcel(parcel: DeliverooParcelType): Parcel {
     return new Parcel(
       parcel.id,
       { x: Math.floor(parcel.x), y: Math.floor(parcel.y) },

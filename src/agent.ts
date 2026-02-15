@@ -112,7 +112,7 @@ export default class Agent {
     }
 
     // Merge knowledge from the message into our beliefs about the sender agent
-    this.beliefs.mergeFromMessage(senderId, msg.getReducedBeliefSet());
+    this.beliefs.merge(msg.getReducedBeliefSet());
 
     const msgContent = msg.getContent();
 
@@ -435,7 +435,7 @@ export default class Agent {
     if (result.length === 0) {
       error(`Deliver failed, no parcel delivered`, this.id);
       // Remove all parcels that we thought were deliverable, since they are not
-      this.beliefs.clearParcels();
+      this.beliefs.clearCarriedParcels();
       return false;
     }
     for (const parcel of result) {

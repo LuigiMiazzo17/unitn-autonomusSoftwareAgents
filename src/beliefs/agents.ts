@@ -24,7 +24,10 @@ export class MeAgent {
   }
 
   isOn(pos: Position): boolean {
-    return Math.floor(this.pos.x) === pos.x && Math.floor(this.pos.y) === pos.y;
+    return (
+      Math.floor(this.pos.x) === Math.floor(pos.x) &&
+      Math.floor(this.pos.y) === Math.floor(pos.y)
+    );
   }
 
   getId(): string {

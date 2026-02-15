@@ -147,7 +147,7 @@ export default class AgentsBelief {
     }
   }
 
-  reset() {
+  clear() {
     this.foreignAgents.clear();
     this.groupAgents.clear();
   }

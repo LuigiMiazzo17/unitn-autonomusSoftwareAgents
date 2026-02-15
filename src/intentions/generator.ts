@@ -33,11 +33,11 @@ export default function generateIntentions(beliefs: BeliefSet): Intention[] {
 
   const availableParcels = [...beliefs.getParcels()]
     .filter(
-      ([, p]) =>
+      (p) =>
         p.getCarriedBy() === null &&
         distanceVector[p.getPos().y][p.getPos().x] !== Infinity,
     )
-    .map(([, p]) => [p, distanceVector[p.getPos().y][p.getPos().x]] as const);
+    .map((p) => [p, distanceVector[p.getPos().y][p.getPos().x]] as const);
   for (const [parcel, distance] of availableParcels) {
     intentions.push({
       kind: "go_pickup",
