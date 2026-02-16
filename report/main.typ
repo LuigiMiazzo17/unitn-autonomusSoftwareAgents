@@ -55,10 +55,6 @@
 #counter(page).update(1)
 
 #set heading(numbering: "1.1.")
-// #show heading.where(level: 1): it => {
-//   pagebreak(weak: true)
-//   it
-// }
 #set par(
   first-line-indent: 15pt,
   justify: true,

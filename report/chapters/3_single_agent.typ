@@ -11,13 +11,30 @@ At the start of each deliberation phase, `generateIntentions(beliefs)` produces 
 - `deliver_parcels`: when the agent is carrying at least one parcel, targeting the closest reachable delivery tile.
 - `go_pickup`: one per unclaimed, non-ignored, reachable parcel in the belief set.
 - `explore_spawn`: one per reachable spawnable tile, driving the agent to cover the map when no parcels are visible.
-- `noop`: always present as a zero-cost fallback.
+- `noop`: always present as a zero-cost fallback.#footnote("The NOOP action sleeps for 100ms to avoid busy-waiting when no other options are available.")
 
 === Selecting the Best Intention
 
-`selectIntention` ranks candidates in a min-priority queue; the lowest score wins. Priority formulas are summarised in //@priority-table.
+`selectIntention` ranks candidates in a min-priority queue; the lowest score wins. Priority formulas are summarised in the below table.
 
-Delivery is preferred over same-distance pickup by a factor of `deliveryOverPickupRatio` (default 0.8): parcels in hand are already decaying, so completing a delivery is worth slightly more than starting a new acquisition at the same travel cost. Exploration is scored above 100, keeping it below any reachable parcel option. The seeded PRNG makes spawnable-tile ordering deterministic and consistent across frames; the `checkedCount` penalty gradually shifts focus to less-visited tiles, encouraging broad map coverage over time. `noop` at infinity is selected only when every other option is unavailable.
+#align(center)[
+  #set par(justify: false)
+  #figure(
+    table(
+      columns: (auto, auto),
+      inset: 6pt,
+      align: horizon,
+      table.header([*Intention Kind*], [*Priority Score*]),
+      [deliver_parcels], [distanceToDelivery × deliveryOverPickupRatio],
+      [go_pickup], [distanceToParcel],
+      [explore_spawn], [100 + lastSeenPenalty + spawnProximityPenalty],
+      [noop], [Infinity],
+    ),
+    caption: [Intention priority scoring formulas],
+  )
+]
+
+Delivery is preferred over same-distance pickup by a factor of `deliveryOverPickupRatio` (default 0.8): parcels in hand are already decaying, so completing a delivery is worth slightly more than starting a new acquisition at the same travel cost. Exploration is scored above 100, keeping it below any reachable parcel option. The `lastSeen`#footnote("Set also by traversing the map, not only if directly visited.") penalty gradually shifts focus to less-visited tiles, encouraging broad map coverage over time. `noop` at infinity is selected only when every other option is unavailable.
 
 == Path Planning with Dijkstra
 
