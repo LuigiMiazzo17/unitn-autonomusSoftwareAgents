@@ -6,7 +6,7 @@ This chapter describes how the agent generates and selects goals and produces ex
 
 === Generating Candidate Intentions
 
-At the start of each deliberation phase, `generateIntentions(beliefs)` produces one candidate intention per actionable opportunity found in the current belief set. A tile or parcel is considered reachable only if its Dijkstra distance from the agent is finite — meaning an unobstructed path exists. Four intention kinds are generated:
+At the start of each deliberation phase, `generateIntentions(beliefs)` produces one candidate intention per actionable opportunity found in the current belief set. A tile or parcel is considered reachable only if its Dijkstra distance from the agent is finite, meaning an unobstructed path exists. Four intention kinds are generated:
 
 - `deliver_parcels`: when the agent is carrying at least one parcel, targeting the closest reachable delivery tile.
 - `go_pickup`: one per unclaimed, non-ignored, reachable parcel in the belief set.
@@ -21,8 +21,8 @@ Delivery is preferred over same-distance pickup by a factor of `deliveryOverPick
 
 == Path Planning with Dijkstra
 
-A full Dijkstra search is run from the agent's current position once per deliberation cycle, treating walls and current foreign-agent positions as impassable. The algorithm returns both a distances array and a `previous` array for path reconstruction. The key advantage over running A\* per target is that the full distance vector is computed once and reused across all distance queries in the same cycle — ranking delivery tiles, measuring parcel distances — without re-running the search. `generatePlanToPos` traces back through `previous` to produce a `Queue<Action>` (steps `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`) consumed one step per frame.
+A full Dijkstra search is run from the agent's current position once per deliberation cycle, treating walls and current foreign-agent positions as impassable. The algorithm returns both a distances array and a `previous` array for path reconstruction. The key advantage over running A\* per target is that the full distance vector is computed once and reused across all distance queries in the same cycle, ranking delivery tiles, measuring parcel distances, without re-running the search. `generatePlanToPos` traces back through `previous` to produce a `Queue<Action>` (steps `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`) consumed one step per frame.
 
 == PDDL-Based Planning <pddl-planning>
 
-In `pddl` mode, plan synthesis is delegated to an external REST solver. The domain defines types `agent`, `tile`, `parcel`; actions `move` (adjacency-constrained, cost 1), `pickup`, and `deliver`; and a metric that minimises total cost, yielding provably optimal plans. Map tiles and adjacency predicates are submitted once as static objects at startup; subsequent planning calls send only incremental diffs — changed parcel positions, updated blocked tiles — reducing payload size. The goal is to deliver all currently known parcels; when none are visible the agent targets a random spawnable tile to remain mobile.
+In `pddl` mode, plan synthesis is delegated to an external REST solver. The domain defines types `agent`, `tile`, `parcel`; actions `move` (adjacency-constrained, cost 1), `pickup`, and `deliver`; and a metric that minimises total cost, yielding provably optimal plans. Map tiles and adjacency predicates are submitted once as static objects at startup; subsequent planning calls send only incremental diffs, changed parcel positions, updated blocked tiles, reducing payload size. The goal is to deliver all currently known parcels; when none are visible the agent targets a random spawnable tile to remain mobile.
