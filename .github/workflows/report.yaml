@@ -1,0 +1,46 @@
+name: report
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "report/**"
+      - ".github/workflows/report.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            report
+
+      - uses: typst-community/setup-typst@v4
+
+      - run: typst compile report/main.typ sveja_macachi_miazzo_bevilacqua_report.pdf
+
+      - name: Compute release metadata
+        shell: bash
+        run: |
+          BUILD_DATE="$(date -u +'%Y-%m-%d')"
+          {
+            echo "BUILD_DATE=$BUILD_DATE"
+            echo "RELEASE_TAG=report-$BUILD_DATE"
+            echo "RELEASE_TITLE=Report ($BUILD_DATE)"
+          } >> "$GITHUB_ENV"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TITLE }}
+          files: |
+            sveja_macachi_miazzo_bevilacqua_report.pdf

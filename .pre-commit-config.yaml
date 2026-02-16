@@ -17,7 +17,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: 2ca41cc1372d1e939a6a879f18cdc19fc1cac1ce # frozen: v8.30.0
+    rev: 6eaad039603a4de39fddd1cf5f727391efe9974e  # frozen: v8.30.0
     hooks:
       - id: gitleaks
 
@@ -27,17 +27,17 @@ repos:
       - id: codespell
 
   - repo: https://github.com/rhysd/actionlint
-    rev: 0933c147c9d6587653d45fdcb4c497c57a65f9af # frozen: v1.7.10
+    rev: 393031adb9afb225ee52ae2ccd7a5af5525e03e8  # frozen: v1.7.11
     hooks:
       - id: actionlint
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.20.0
+    rev: 7339935a3036f096ee0d7f1f047a9ec41707d4c1  # frozen: v0.20.0
     hooks:
       - id: markdownlint-cli2
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 45ef068da5f21267bb2a7ec4a623092959f09ce5 # frozen: v0.14.14
+    rev: fa93bc3224c614a0e9786d3e2d3d48edcca246eb  # frozen: v0.15.1
     hooks:
       # Run the linter.
       - id: ruff
@@ -48,6 +48,11 @@ repos:
         types_or: [python, pyi]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 5419f5b504dd5329d26fdf936719cb3b08b3eadf # frozen: 0.9.28
+    rev: 704e08ca1d99a34052c7c15af6cb9df27d1b6259  # frozen: 0.10.2
     hooks:
       - id: uv-lock
+
+  # - repo: https://github.com/typstyle-rs/pre-commit-typstyle
+  #   rev: v0.14.4
+  #   hooks:
+  #     - id: typstyle
