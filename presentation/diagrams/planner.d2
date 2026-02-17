@@ -1,0 +1,55 @@
+title: "Autonomous Software Agents - Planner"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet\nCurrent view of the world"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan\nCurrent plan being executed"
+  }
+}
+
+intention: {
+  label: "Intention"
+  selector: {
+    label: "Intention Selector"
+  }
+  pddl: {
+    label: "Custom PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+  }
+  pddl: {
+    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+  }
+}
+
+intention.pddl -> planner.pddl
+intention.selector -> planner.lib
+planner.pddl -> pddlSolver.rest
+planner.lib -> agentRuntime.plan
+beliefs.state -> planner.lib
