@@ -1,0 +1,113 @@
+title: "Autonomous Software Agents - Beliefs"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+platform: {
+  label: "External Deliveroo.js Platform\nWorld simulation"
+  sensing: {
+    label: "Sensing callbacks"
+    onMap: {
+      label: "onMap()\nMap updates"
+    }
+    onYou: {
+      label: "onYou()\nAgent state updates"
+    }
+    onParcelsSensing: {
+      label: "onParcelsSensing()\nParcel state updates"
+    }
+    onAgentsSensing: {
+      label: "onAgentsSensing()\nOther agents state updates"
+    }
+  }
+  actions: {
+    label: "Action API"
+    mapAction: {
+      label: "Move | Pickup | Deliver"
+    }
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet\nCurrent view of the world"
+    agents: {
+      label: "Agents Belief\nSelf, group agents, foreign agents"
+      shape: cylinder
+    }
+  }
+  routines: {
+    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+    mapUpdate: {
+      label: "Map Update Routine\nProcesses map updates and updates belief state"
+    }
+    agentsUpdate: {
+      label: "Agents Update Routine\nProcesses agent updates and updates belief state"
+    }
+    parcelsUpdate: {
+      label: "Parcels Update Routine\nProcesses parcel updates and updates belief state"
+    }
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan\nCurrent plan being executed"
+  }
+}
+
+intention: {
+  label: "Intention"
+  generator: {
+    label: "Intention Generator"
+  }
+  pddl: {
+    label: "Custom PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+  }
+}
+
+coordination: {
+  label: "Coordination Engine"
+  communication: {
+    label: "Communication Manager"
+    serializer: {
+      label: "Message Serializer\nSerializes beliefs for communication"
+    }
+    deserializer: {
+      label: "Message Deserializer\nDeserializes received beliefs"
+    }
+  }
+  agentGC: {
+    label: "Agent Garbage Collector\nRemoves agents from belief if not seen for a while"
+  }
+}
+
+platform.sensing.onMap -> beliefs.routines.mapUpdate
+platform.sensing.onAgentsSensing -> beliefs.routines.agentsUpdate
+platform.sensing.onYou -> beliefs.routines.agentsUpdate
+platform.sensing.onParcelsSensing -> beliefs.routines.parcelsUpdate
+
+beliefs.state.agents -> coordination.agentGC
+coordination.agentGC -> beliefs.state.agents
+beliefs.state -> coordination.communication.serializer
+coordination.communication.deserializer -> beliefs.routines
+
+beliefs.state -> intention.pddl
+beliefs.routines -> beliefs.state
+beliefs.state -> intention.generator
+platform.actions.mapAction -> beliefs.state.agents
+beliefs.state -> planner.lib
+beliefs.routines -> agentRuntime.plan
