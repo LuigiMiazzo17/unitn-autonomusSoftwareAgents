@@ -1,0 +1,176 @@
+title: "Autonomous Software Agents - High-Level Architecture"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+platform: {
+  label: "External Deliveroo.js Platform\nWorld simulation"
+  sensing: {
+    label: "Sensing callbacks"
+    onMap: {
+      label: "onMap()\nMap updates"
+    }
+    onYou: {
+      label: "onYou()\nAgent state updates"
+    }
+    onParcelsSensing: {
+      label: "onParcelsSensing()\nParcel state updates"
+    }
+    onAgentsSensing: {
+      label: "onAgentsSensing()\nOther agents state updates"
+    }
+    onMsg: {
+      label: "onMsg()\nMessages from other agents"
+    }
+  }
+  actions: {
+    label: "Action API"
+    mapAction: {
+      label: "Move | Pickup | Deliver"
+    }
+    broadcast: {
+      label: "Broadcast message to all agents"
+    }
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet\nCurrent view of the world"
+    map: {
+      label: "Map Belief\nMap + spawn/delivery knowledge"
+      shape: cylinder
+    }
+    parcels: {
+      label: "Parcels Belief\nKnown parcels + carrying/handoff"
+      shape: cylinder
+    }
+    agents: {
+      label: "Agents Belief\nSelf, group agents, foreign agents"
+      shape: cylinder
+    }
+  }
+  routines: {
+    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+    mapUpdate: {
+      label: "Map Update Routine\nProcesses map updates and updates belief state"
+    }
+    agentsUpdate: {
+      label: "Agents Update Routine\nProcesses agent updates and updates belief state"
+    }
+    parcelsUpdate: {
+      label: "Parcels Update Routine\nProcesses parcel updates and updates belief state"
+    }
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan\nCurrent plan being executed"
+  }
+  executor: {
+    label: "Action Executor\nExecute actions based on current plan"
+  }
+}
+
+intention: {
+  label: "Intention"
+  generator: {
+    label: "Intention Generator"
+  }
+  selector: {
+    label: "Intention Selector"
+  }
+  pddl: {
+    label: "Custom PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+  }
+  pddl: {
+    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+  }
+}
+
+coordination: {
+  label: "Coordination Engine"
+  communication: {
+    label: "Communication Manager"
+    serializer: {
+      label: "Message Serializer\nSerializes beliefs for communication"
+    }
+    deserializer: {
+      label: "Message Deserializer\nDeserializes received beliefs"
+    }
+  }
+  broadcastdaemon: {
+    label: "Broadcast Daemon\nPeriodically shares beliefs/checkin messsages with other agents"
+  }
+  agentGC: {
+    label: "Agent Garbage Collector\nRemoves agents from belief if not seen for a while"
+  }
+}
+
+configuration: {
+  label: "Configuration"
+  mode: {
+    label: "Agent Mode\nDefines agent operating mode (pddl, decentralized)"
+  }
+  intentionWeighting: {
+    label: "Intention Weighting\nWeights for intention selection (e.g., delivery vs pickup)"
+  }
+}
+
+platform.sensing.onMap -> beliefs.routines.mapUpdate
+platform.sensing.onAgentsSensing -> beliefs.routines.agentsUpdate
+platform.sensing.onYou -> beliefs.routines.agentsUpdate
+platform.sensing.onParcelsSensing -> beliefs.routines.parcelsUpdate
+platform.sensing.onMsg -> coordination.communication.deserializer
+
+beliefs.state.agents -> coordination.agentGC
+coordination.broadcastdaemon -> coordination.communication.serializer
+coordination.agentGC -> beliefs.state.agents
+coordination.communication.serializer -> platform.actions.broadcast
+beliefs.state -> coordination.communication.serializer
+coordination.communication.deserializer -> beliefs.routines
+
+beliefs.state -> intention.pddl
+beliefs.routines -> beliefs.state
+
+configuration.mode -> intention.pddl
+intention.pddl -> planner.pddl
+beliefs.state -> intention.generator
+configuration.mode -> intention.generator
+intention.generator -> intention.selector
+configuration.intentionWeighting -> intention.selector
+
+intention.selector -> planner.lib
+planner.pddl -> pddlSolver.rest
+pddlSolver.rest -> agentRuntime.plan
+planner.lib -> agentRuntime.plan
+agentRuntime.plan -> agentRuntime.executor
+agentRuntime.executor -> platform.actions.mapAction
+platform.actions.mapAction -> agentRuntime.plan
+platform.actions.mapAction -> beliefs.state.agents
+beliefs.state -> planner.lib
+agentRuntime.plan -> intention.generator
+agentRuntime.plan -> intention.pddl
+
+beliefs.routines -> agentRuntime.plan
