@@ -1,0 +1,32 @@
+title: "Autonomous Software Agents - PDDL Planner"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan\nCurrent plan being executed"
+  }
+}
+
+planner: {
+  label: "Planner"
+  pddl: {
+    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+  }
+}
+
+planner.pddl -> pddlSolver.rest
+pddlSolver.rest -> agentRuntime.plan
