@@ -1,0 +1,65 @@
+title: "Autonomous Software Agents - Coordination"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+platform: {
+  label: "External Deliveroo.js Platform\nWorld simulation"
+  sensing: {
+    label: "Sensing callbacks"
+    onMsg: {
+      label: "onMsg()\nMessages from other agents"
+    }
+  }
+  actions: {
+    label: "Action API"
+    broadcast: {
+      label: "Broadcast message to all agents"
+    }
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet\nCurrent view of the world"
+    agents: {
+      label: "Agents Belief\nSelf, group agents, foreign agents"
+      shape: cylinder
+    }
+  }
+  routines: {
+    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+  }
+}
+
+coordination: {
+  label: "Coordination Engine"
+  communication: {
+    label: "Communication Manager"
+    serializer: {
+      label: "Message Serializer\nSerializes beliefs for communication"
+    }
+    deserializer: {
+      label: "Message Deserializer\nDeserializes received beliefs"
+    }
+  }
+  broadcastdaemon: {
+    label: "Broadcast Daemon\nPeriodically shares beliefs/checkin messsages with other agents"
+  }
+  agentGC: {
+    label: "Agent Garbage Collector\nRemoves agents from belief if not seen for a while"
+  }
+}
+
+platform.sensing.onMsg -> coordination.communication.deserializer
+beliefs.state.agents -> coordination.agentGC
+coordination.broadcastdaemon -> coordination.communication.serializer
+coordination.agentGC -> beliefs.state.agents
+coordination.communication.serializer -> platform.actions.broadcast
+beliefs.state -> coordination.communication.serializer
+coordination.communication.deserializer -> beliefs.routines
