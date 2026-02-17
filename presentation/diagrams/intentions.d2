@@ -1,0 +1,68 @@
+title: "Autonomous Software Agents - Intentions"
+
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 105
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet\nCurrent view of the world"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan\nCurrent plan being executed"
+  }
+}
+
+intention: {
+  label: "Intention"
+  generator: {
+    label: "Intention Generator"
+  }
+  selector: {
+    label: "Intention Selector"
+  }
+  pddl: {
+    label: "Custom PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+  }
+  pddl: {
+    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+  }
+}
+
+configuration: {
+  label: "Configuration"
+  mode: {
+    label: "Agent Mode\nDefines agent operating mode (pddl, decentralized)"
+  }
+  intentionWeighting: {
+    label: "Intention Weighting\nWeights for intention selection (e.g., delivery vs pickup)"
+  }
+}
+
+beliefs.state -> intention.pddl
+
+configuration.mode -> intention.pddl
+intention.pddl -> planner.pddl
+beliefs.state -> intention.generator
+configuration.mode -> intention.generator
+intention.generator -> intention.selector
+configuration.intentionWeighting -> intention.selector
+
+intention.selector -> planner.lib
+agentRuntime.plan -> intention.generator
+agentRuntime.plan -> intention.pddl
