@@ -8,23 +8,26 @@ vars: {
 }
 
 platform: {
-  label: "External Deliveroo.js Platform\nWorld simulation"
+  label: "External Deliveroo.js Platform"
+  style: {
+    fill: "#dd8833"
+  }
   sensing: {
     label: "Sensing callbacks"
     onMap: {
-      label: "onMap()\nMap updates"
+      label: "onMap()"
     }
     onYou: {
-      label: "onYou()\nAgent state updates"
+      label: "onYou()"
     }
     onParcelsSensing: {
-      label: "onParcelsSensing()\nParcel state updates"
+      label: "onParcelsSensing()"
     }
     onAgentsSensing: {
-      label: "onAgentsSensing()\nOther agents state updates"
+      label: "onAgentsSensing()"
     }
     onMsg: {
-      label: "onMsg()\nMessages from other agents"
+      label: "onMsg()"
     }
   }
   actions: {
@@ -41,22 +44,22 @@ platform: {
 beliefs: {
   label: "Belief"
   state: {
-    label: "BeliefSet\nCurrent view of the world"
+    label: "BeliefSet"
     agents: {
-      label: "Agents Belief\nSelf, group agents, foreign agents"
+      label: "Agents Belief"
       shape: cylinder
     }
   }
   routines: {
-    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+    label: "Belief Routines"
     mapUpdate: {
-      label: "Map Update Routine\nProcesses map updates and updates belief state"
+      label: "Map Update Routine"
     }
     agentsUpdate: {
-      label: "Agents Update Routine\nProcesses agent updates and updates belief state"
+      label: "Agents Update Routine"
     }
     parcelsUpdate: {
-      label: "Parcels Update Routine\nProcesses parcel updates and updates belief state"
+      label: "Parcels Update Routine"
     }
   }
 }
@@ -64,10 +67,11 @@ beliefs: {
 agentRuntime: {
   label: "Agent Runtime"
   plan: {
-    label: "Current Plan\nCurrent plan being executed"
+    label: "Current Plan"
+    shape: cylinder
   }
   executor: {
-    label: "Action Executor\nExecute actions based on current plan"
+    label: "Action Executor"
   }
 }
 
@@ -76,10 +80,10 @@ coordination: {
   communication: {
     label: "Communication Manager"
     serializer: {
-      label: "Message Serializer\nSerializes beliefs for communication"
+      label: "Message Serializer"
     }
     deserializer: {
-      label: "Message Deserializer\nDeserializes received beliefs"
+      label: "Message Deserializer"
     }
   }
 }

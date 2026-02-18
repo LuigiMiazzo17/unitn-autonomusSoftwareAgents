@@ -80,6 +80,7 @@ agentRuntime: {
   label: "Agent Runtime"
   plan: {
     label: "Current Plan\nCurrent plan being executed"
+    shape: cylinder
   }
   executor: {
     label: "Action Executor\nExecute actions based on current plan"
@@ -167,7 +168,8 @@ pddlSolver.rest -> agentRuntime.plan
 planner.lib -> agentRuntime.plan
 agentRuntime.plan -> agentRuntime.executor
 agentRuntime.executor -> platform.actions.mapAction
-platform.actions.mapAction -> agentRuntime.plan
+platform.actions.mapAction -> agentRuntime.executor
+agentRuntime.executor -> agentRuntime.plan
 platform.actions.mapAction -> beliefs.state.agents
 beliefs.state -> planner.lib
 agentRuntime.plan -> intention.generator

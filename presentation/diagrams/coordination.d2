@@ -8,11 +8,11 @@ vars: {
 }
 
 platform: {
-  label: "External Deliveroo.js Platform\nWorld simulation"
+  label: "External Deliveroo.js Platform"
   sensing: {
     label: "Sensing callbacks"
     onMsg: {
-      label: "onMsg()\nMessages from other agents"
+      label: "onMsg()"
     }
   }
   actions: {
@@ -26,33 +26,36 @@ platform: {
 beliefs: {
   label: "Belief"
   state: {
-    label: "BeliefSet\nCurrent view of the world"
+    label: "BeliefSet"
     agents: {
-      label: "Agents Belief\nSelf, group agents, foreign agents"
+      label: "Agents Belief"
       shape: cylinder
     }
   }
   routines: {
-    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+    label: "Belief Routines"
   }
 }
 
 coordination: {
   label: "Coordination Engine"
+  style: {
+    fill: "#dd8833"
+  }
   communication: {
     label: "Communication Manager"
     serializer: {
-      label: "Message Serializer\nSerializes beliefs for communication"
+      label: "Message Serializer"
     }
     deserializer: {
-      label: "Message Deserializer\nDeserializes received beliefs"
+      label: "Message Deserializer"
     }
   }
   broadcastdaemon: {
-    label: "Broadcast Daemon\nPeriodically shares beliefs/checkin messsages with other agents"
+    label: "Broadcast Daemon"
   }
   agentGC: {
-    label: "Agent Garbage Collector\nRemoves agents from belief if not seen for a while"
+    label: "Agent Garbage Collector"
   }
 }
 

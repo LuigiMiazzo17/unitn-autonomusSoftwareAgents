@@ -9,6 +9,9 @@ vars: {
 
 pddlSolver: {
   label: "External PDDL Service"
+  style: {
+    fill: "#dd8833"
+  }
   rest: {
     label: "PDDL REST Solver Service"
   }
@@ -17,14 +20,15 @@ pddlSolver: {
 agentRuntime: {
   label: "Agent Runtime"
   plan: {
-    label: "Current Plan\nCurrent plan being executed"
+    label: "Current Plan"
+    shape: cylinder
   }
 }
 
 planner: {
   label: "Planner"
   pddl: {
-    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+    label: "PDDL Client"
   }
 }
 

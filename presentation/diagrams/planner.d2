@@ -17,14 +17,15 @@ pddlSolver: {
 beliefs: {
   label: "Belief"
   state: {
-    label: "BeliefSet\nCurrent view of the world"
+    label: "BeliefSet"
   }
 }
 
 agentRuntime: {
   label: "Agent Runtime"
   plan: {
-    label: "Current Plan\nCurrent plan being executed"
+    label: "Current Plan"
+    shape: cylinder
   }
 }
 
@@ -40,11 +41,14 @@ intention: {
 
 planner: {
   label: "Planner"
+  style: {
+    fill: "#dd8833"
+  }
   lib: {
-    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+    label: "Planning Library"
   }
   pddl: {
-    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+    label: "PDDL Client"
   }
 }
 

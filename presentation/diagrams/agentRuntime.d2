@@ -1,5 +1,7 @@
 title: "Autonomous Software Agents - Agent Runtime"
 
+direction: right
+
 vars: {
   d2-config: {
     layout-engine: tala
@@ -8,7 +10,7 @@ vars: {
 }
 
 platform: {
-  label: "External Deliveroo.js Platform\nWorld simulation"
+  label: "External Deliveroo.js Platform"
   actions: {
     label: "Action API"
     mapAction: {
@@ -27,17 +29,21 @@ pddlSolver: {
 beliefs: {
   label: "Belief"
   routines: {
-    label: "Belief Routines\nProcesses new beliefs and updates belief state"
+    label: "Belief Routines"
   }
 }
 
 agentRuntime: {
   label: "Agent Runtime"
+  style: {
+    fill: "#dd8833"
+  }
   plan: {
-    label: "Current Plan\nCurrent plan being executed"
+    label: "Current Plan"
+    shape: cylinder
   }
   executor: {
-    label: "Action Executor\nExecute actions based on current plan"
+    label: "Action Executor"
   }
 }
 
@@ -54,7 +60,7 @@ intention: {
 planner: {
   label: "Planner"
   lib: {
-    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+    label: "Planning Library"
   }
 }
 
@@ -62,7 +68,8 @@ pddlSolver.rest -> agentRuntime.plan
 planner.lib -> agentRuntime.plan
 agentRuntime.plan -> agentRuntime.executor
 agentRuntime.executor -> platform.actions.mapAction
-platform.actions.mapAction -> agentRuntime.plan
+platform.actions.mapAction -> agentRuntime.executor
+agentRuntime.executor -> agentRuntime.plan
 agentRuntime.plan -> intention.generator
 agentRuntime.plan -> intention.pddl
 

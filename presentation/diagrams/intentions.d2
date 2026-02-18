@@ -10,19 +10,23 @@ vars: {
 beliefs: {
   label: "Belief"
   state: {
-    label: "BeliefSet\nCurrent view of the world"
+    label: "BeliefSet"
   }
 }
 
 agentRuntime: {
   label: "Agent Runtime"
   plan: {
-    label: "Current Plan\nCurrent plan being executed"
+    label: "Current Plan"
+    shape: cylinder
   }
 }
 
 intention: {
   label: "Intention"
+  style: {
+    fill: "#dd8833"
+  }
   generator: {
     label: "Intention Generator"
   }
@@ -37,20 +41,20 @@ intention: {
 planner: {
   label: "Planner"
   lib: {
-    label: "Planning Library\nBased on Dijkstra's algorithm for pathfinding and action planning"
+    label: "Planning Library"
   }
   pddl: {
-    label: "PDDL Client\nTranslates beliefs and intentions to PDDL and calls PDDL solver"
+    label: "PDDL Client"
   }
 }
 
 configuration: {
   label: "Configuration"
   mode: {
-    label: "Agent Mode\nDefines agent operating mode (pddl, decentralized)"
+    label: "Agent Mode"
   }
   intentionWeighting: {
-    label: "Intention Weighting\nWeights for intention selection (e.g., delivery vs pickup)"
+    label: "Intention Weighting"
   }
 }
 
