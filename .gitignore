@@ -6,5 +6,3 @@ bench-results
 .venv
 
 .DS_Store
-
-*.svg
