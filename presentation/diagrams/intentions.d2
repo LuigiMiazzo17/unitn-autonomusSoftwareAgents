@@ -1,0 +1,70 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 105
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan"
+    shape: cylinder
+  }
+}
+
+intention: {
+  label: "Intention"
+  style: {
+    fill: "#dd8833"
+  }
+  generator: {
+    label: "Intention Generator"
+  }
+  selector: {
+    label: "Intention Selector"
+  }
+  pddl: {
+    label: "PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library"
+  }
+  pddl: {
+    label: "PDDL Client"
+  }
+}
+
+configuration: {
+  label: "Configuration"
+  mode: {
+    label: "Agent Mode"
+  }
+  intentionWeighting: {
+    label: "Intention Weighting"
+  }
+}
+
+beliefs.state -> intention.pddl
+
+configuration.mode -> intention.pddl
+intention.pddl -> planner.pddl
+beliefs.state -> intention.generator
+configuration.mode -> intention.generator
+intention.generator -> intention.selector
+configuration.intentionWeighting -> intention.selector
+
+intention.selector -> planner.lib
+agentRuntime.plan -> intention.generator
+agentRuntime.plan -> intention.pddl

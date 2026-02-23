@@ -1,0 +1,57 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 105
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  state: {
+    label: "BeliefSet"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan"
+    shape: cylinder
+  }
+}
+
+intention: {
+  label: "Intention"
+  selector: {
+    label: "Intention Selector"
+  }
+  pddl: {
+    label: "PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  style: {
+    fill: "#dd8833"
+  }
+  lib: {
+    label: "Planning Library"
+  }
+  pddl: {
+    label: "PDDL Client"
+  }
+}
+
+intention.pddl -> planner.pddl
+intention.selector -> planner.lib
+planner.pddl -> pddlSolver.rest
+planner.lib -> agentRuntime.plan
+beliefs.state -> planner.lib

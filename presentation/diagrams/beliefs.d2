@@ -1,0 +1,123 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 105
+  }
+}
+
+platform: {
+  label: "External Deliveroo.js Platform"
+  sensing: {
+    label: "Sensing callbacks"
+    onMap: {
+      label: "onMap()"
+    }
+    onYou: {
+      label: "onYou()"
+    }
+    onParcelsSensing: {
+      label: "onParcelsSensing()"
+    }
+    onAgentsSensing: {
+      label: "onAgentsSensing()"
+    }
+  }
+  actions: {
+    label: "Action API"
+    mapAction: {
+      label: "Move | Pickup | Deliver"
+    }
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  style: {
+    fill: "#dd8833"
+  }
+  state: {
+    label: "BeliefSet"
+    map: {
+      label: "Map Belief"
+      shape: cylinder
+    }
+    parcels: {
+      label: "Parcels Belief"
+      shape: cylinder
+    }
+    agents: {
+      label: "Agents Belief"
+      shape: cylinder
+    }
+  }
+  routines: {
+    label: "Belief Routines"
+    mapUpdate: {
+      label: "Map Update Routine"
+    }
+    agentsUpdate: {
+      label: "Agents Update Routine"
+    }
+    parcelsUpdate: {
+      label: "Parcels Update Routine"
+    }
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan"
+  }
+}
+
+intention: {
+  label: "Intention"
+  generator: {
+    label: "Intention Generator"
+  }
+  pddl: {
+    label: "PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Custom planning Library"
+  }
+}
+
+coordination: {
+  label: "Coordination Engine"
+  communication: {
+    label: "Communication Manager"
+    serializer: {
+      label: "Message Serializer"
+    }
+    deserializer: {
+      label: "Message Deserializer"
+    }
+  }
+  agentGC: {
+    label: "Agent Garbage Collector"
+  }
+}
+
+platform.sensing.onMap -> beliefs.routines.mapUpdate
+platform.sensing.onAgentsSensing -> beliefs.routines.agentsUpdate
+platform.sensing.onYou -> beliefs.routines.agentsUpdate
+platform.sensing.onParcelsSensing -> beliefs.routines.parcelsUpdate
+
+beliefs.state.agents -> coordination.agentGC
+coordination.agentGC -> beliefs.state.agents
+beliefs.state -> coordination.communication.serializer
+coordination.communication.deserializer -> beliefs.routines
+
+beliefs.state -> intention.pddl
+beliefs.routines -> beliefs.state
+beliefs.state -> intention.generator
+platform.actions.mapAction -> beliefs.state.agents
+beliefs.state.map -> planner.lib
+beliefs.state.agents -> planner.lib
+beliefs.routines -> agentRuntime.plan

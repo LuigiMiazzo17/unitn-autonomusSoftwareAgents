@@ -1,0 +1,74 @@
+direction: right
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 105
+  }
+}
+
+platform: {
+  label: "External Deliveroo.js Platform"
+  actions: {
+    label: "Action API"
+    mapAction: {
+      label: "Move | Pickup | Deliver"
+    }
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+beliefs: {
+  label: "Belief"
+  routines: {
+    label: "Belief Routines"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  style: {
+    fill: "#dd8833"
+  }
+  plan: {
+    label: "Current Plan"
+    shape: cylinder
+  }
+  executor: {
+    label: "Action Executor"
+  }
+}
+
+intention: {
+  label: "Intention"
+  generator: {
+    label: "Intention Generator"
+  }
+  pddl: {
+    label: "PDDL Generator/Selector"
+  }
+}
+
+planner: {
+  label: "Planner"
+  lib: {
+    label: "Planning Library"
+  }
+}
+
+pddlSolver.rest -> agentRuntime.plan
+planner.lib -> agentRuntime.plan
+agentRuntime.plan -> agentRuntime.executor
+agentRuntime.executor -> platform.actions.mapAction
+platform.actions.mapAction -> agentRuntime.executor
+agentRuntime.executor -> agentRuntime.plan
+agentRuntime.plan -> intention.generator
+agentRuntime.plan -> intention.pddl
+
+beliefs.routines -> agentRuntime.plan

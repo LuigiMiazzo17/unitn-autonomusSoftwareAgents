@@ -1,0 +1,34 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 105
+  }
+}
+
+pddlSolver: {
+  label: "External PDDL Service"
+  style: {
+    fill: "#dd8833"
+  }
+  rest: {
+    label: "PDDL REST Solver Service"
+  }
+}
+
+agentRuntime: {
+  label: "Agent Runtime"
+  plan: {
+    label: "Current Plan"
+    shape: cylinder
+  }
+}
+
+planner: {
+  label: "Planner"
+  pddl: {
+    label: "PDDL Client"
+  }
+}
+
+planner.pddl -> pddlSolver.rest
+pddlSolver.rest -> agentRuntime.plan
